@@ -6,6 +6,23 @@ Pure C++ library (that only depends on C++ standard library) to resolve a packag
 
 The `resolve-robotics-uri-cpp` is composed by a single self-contained header, `ResolveRoboticsURICpp.h`. You can directly use the header in your project, or install the library using one method described in the following.
 
+### Installation via conda-forge
+
+The `resolve-robotics-uri-cpp` is available in the [`libresolve-robotics-uri-cpp`](https://prefix.dev/channels/conda-forge/packages/libresolve-robotics-uri-cpp) conda-forge package, so you can install it with your favority conda tool, for example pixi:
+
+~~~
+pixi add libresolve-robotics-uri-cpp
+~~~
+
+and then use it in your CMake project with:
+
+~~~cmake
+find_package(ResolveRoboticsURICpp REQUIRED)
+
+# Use the provided target 
+target_link_libraries(<...> PRIVATE ResolveRoboticsURICpp::ResolveRoboticsURICpp)
+~~~
+
 ### Installation via FetchContent
 
 ~~~cmake
@@ -13,7 +30,7 @@ include(FetchContent)
 FetchContent_Declare(
   ResolveRoboticsURICpp
   GIT_REPOSITORY https://github.com/ami-iit/resolve-robotics-uri-cpp
-  GIT_TAG        v0.0.1 # Or change this to use another release or tag
+  GIT_TAG        v0.1.0 # Or change this to use another release or tag
 )
 FetchContent_MakeAvailable(ResolveRoboticsURICpp)
 
