@@ -4,7 +4,7 @@ Pure C++ library (that only depends on C++ standard library) to resolve a packag
 
 ## Installation
 
-The `resolve-robotics-uri-cpp` is composed by a single sellf-contained header, `ResolveRoboticsURICpp.h`. You can directly use the header in your project, or install the library using one method described in the following.
+The `resolve-robotics-uri-cpp` is composed by a single self-contained header, `ResolveRoboticsURICpp.h`. You can directly use the header in your project, or install the library using one method described in the following.
 
 ### Installation via FetchContent
 
@@ -62,6 +62,18 @@ If you want to get the location of the `panda`  model installed by [`moveit_reso
 std::optional<std::string> absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI("package://moveit_resources_panda_description/urdf/panda.urdf")
 ~~~
 
+To customize search behavior (for example disable active-prefix search or exclude specific env vars):
+
+~~~cxx
+ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
+options.excludeActivePrefix = true;
+options.excludeEnvVars.insert("GAZEBO_MODEL_PATH");
+options.packageDirs.push_back("/custom/share/root");
+
+std::optional<std::string> absolute_path =
+  ResolveRoboticsURICpp::resolveRoboticsURI("package://example_pkg/model.urdf", options);
+~~~
+
 ## Command Line usage
 
 `resolve-robotics-uri-cpp` also install a command line tool called `resolve-robotics-uri-cpp` for use in scripts, that can be used as:
@@ -70,9 +82,29 @@ std::optional<std::string> absolute_path = ResolveRoboticsURICpp::resolveRobotic
 resolve-robotics-uri-cpp package://iCub/robots/iCubGazeboV2_7/model.urdf
 ~~~
 
+You can also control search options from the command line:
+
+~~~
+resolve-robotics-uri-cpp --exclude-active-prefix --exclude-env-var GAZEBO_MODEL_PATH package://iCub/robots/iCubGazeboV2_7/model.urdf
+~~~
+
 For example,  on bash this can be used to easily convert the a urdf specified via `package://` to an sdf (assuming you have Gazebo installed), using the [backtick operator](https://www.redhat.com/sysadmin/backtick-operator-vs-parens):
 ~~~
 gz sdf -p `resolve-robotics-uri-cpp package://iCub/robots/iCubGazeboV2_7/model.urdf`
+~~~
+
+## Details On How Files Are Searched
+
+You can find detailed file search rules in [rru_spec.md](rru_spec.md).
+
+## Example Pure CMake/C++ Package Installing `cube.urdf`
+
+An example pure CMake/C++ project that installs a resource in a ROS-compatible layout is available in [examples/example_cmake_package](examples/example_cmake_package).
+
+After installation in an active conda or virtual environment prefix, the file can be resolved with:
+
+~~~
+resolve-robotics-uri-cpp package://example_cmake_package/cube.urdf
 ~~~
 
 ## Python version
