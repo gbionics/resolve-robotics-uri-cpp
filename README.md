@@ -29,7 +29,7 @@ target_link_libraries(<...> PRIVATE ResolveRoboticsURICpp::ResolveRoboticsURICpp
 include(FetchContent)
 FetchContent_Declare(
   ResolveRoboticsURICpp
-  GIT_REPOSITORY https://github.com/ami-iit/resolve-robotics-uri-cpp
+  GIT_REPOSITORY https://github.com/gbionics/resolve-robotics-uri-cpp
   GIT_TAG        v0.1.0 # Or change this to use another release or tag
 )
 FetchContent_MakeAvailable(ResolveRoboticsURICpp)
@@ -41,7 +41,7 @@ target_link_libraries(<...> PRIVATE ResolveRoboticsURICpp::ResolveRoboticsURICpp
 ### Install from source and find the CMake package in your project
 
 ~~~bash
-git clone https://github.com/ami-iit/resolve-robotics-uri-cpp
+git clone https://github.com/gbionics/resolve-robotics-uri-cpp
 cd resolve-robotics-uri-cpp
 cmake -S. -Bbuild -DCMAKE_INSTALL_PREFIX=./build/install -DCMAKE_BUILD_TYPE=Release .
 cmake --build build
@@ -50,6 +50,7 @@ export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:`pwd`/build/install
 ~~~
 
 Then in your project:
+
 ~~~cmake
 find_package(ResolveRoboticsURICpp REQUIRED)
 
