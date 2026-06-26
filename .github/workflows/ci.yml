@@ -16,17 +16,17 @@ jobs:
       fail-fast: false
       matrix:
         build_type: [Release]
-        os: [ubuntu-22.04, macos-latest, windows-2019]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Print used environment (no conda) [Conda]
       shell: bash
       run: |
         env
 
-    - uses: prefix-dev/setup-pixi@v0.8.3
+    - uses: prefix-dev/setup-pixi@v0.9.6
 
     - name: Install the package
       shell: bash -l {0}
