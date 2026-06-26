@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>example_cmake_package</name>
+  <version>0.1.0</version>
+  <description>Example of a pure CMake/C++ package that installs data files in a way that can be found by resolve-robotics-uri-cpp and regular ROS tooling.</description>
+  <maintainer email="silvio.traversaro@gbionics.ai">Silvio Traversaro</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
