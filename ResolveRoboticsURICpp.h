@@ -6,6 +6,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -43,16 +44,44 @@ inline std::string cleanPathSeparator(const std::string& filename, const bool is
     return output;
 }
 
-inline bool isFileExisting(const std::string& filename)
+inline bool isPathExisting(const std::string& filename)
 {
-    if (FILE* file = fopen(filename.c_str(), "r"))
+    std::error_code ec;
+    return std::filesystem::exists(filename, ec);
+}
+
+inline std::string fileUriToLocalPath(const std::string& uriFilename, const bool isWindows)
+{
+    const std::string fileScheme = "file:";
+    if (uriFilename.substr(0, fileScheme.size()) != fileScheme)
     {
-        fclose(file);
-        return true;
-    } else
-    {
-        return false;
+        return uriFilename;
     }
+
+    std::string localPath = uriFilename.substr(fileScheme.size());
+
+    if (isWindows)
+    {
+        while (!localPath.empty() && (localPath.front() == '/' || localPath.front() == '\\'))
+        {
+            localPath.erase(0, 1);
+        }
+
+        return cleanPathSeparator(localPath, isWindows);
+    }
+
+    std::size_t leadingSlashCount = 0;
+    while (leadingSlashCount < localPath.size() && localPath[leadingSlashCount] == '/')
+    {
+        ++leadingSlashCount;
+    }
+
+    if (leadingSlashCount > 1)
+    {
+        localPath.erase(0, leadingSlashCount - 1);
+    }
+
+    return localPath;
 }
 
 inline std::string joinPaths(const std::string& base,
@@ -104,7 +133,7 @@ inline bool getFilePath(const std::string& filename,
     {
         const std::string testPath =
             cleanPathSeparator(joinPaths(path, filenameNoPrefix, isWindows), isWindows);
-        if (isFileExisting(testPath))
+        if (isPathExisting(testPath))
         {
             outputFileName = testPath;
             return true;
@@ -160,21 +189,20 @@ resolveRoboticsURI(const std::string& uriFilename,
     isWindows = true;
 #endif
 
-    // If file starts with file:/, remove file:/ and return if it exists
-    std::string fileUriPrefix = "file:/";
-    if (uriFilename.substr(0, fileUriPrefix.size()) == fileUriPrefix)
+    // If path starts with file:, convert to local path and return if it exists.
+    const std::string fileScheme = "file:";
+    if (uriFilename.substr(0, fileScheme.size()) == fileScheme)
     {
-        std::string uriFilename_noprefix = uriFilename;
-        uriFilename_noprefix.erase(0, fileUriPrefix.size());
+        const std::string uriFilename_noprefix = fileUriToLocalPath(uriFilename, isWindows);
 
-        if (isFileExisting(uriFilename_noprefix))
+        if (isPathExisting(uriFilename_noprefix))
         {
             return uriFilename_noprefix;
         }
     }
 
     // If the file exists with removing any prefix, just return it
-    if (isFileExisting(uriFilename))
+    if (isPathExisting(uriFilename))
     {
         return uriFilename;
     }

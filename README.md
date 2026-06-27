@@ -1,6 +1,6 @@
 # resolve-robotics-uri-cpp
 
-Pure C++ library (that only depends on C++ standard library) to resolve a package:// (ROS-style) or model:// (Gazebo-style) URI to an absolute filename.
+Pure C++ library (that only depends on C++ standard library) to resolve a package:// (ROS-style) or model:// (Gazebo-style) URI to an absolute filesystem path (file or directory).
 
 ## Installation
 

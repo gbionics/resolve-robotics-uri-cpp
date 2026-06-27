@@ -15,7 +15,7 @@ If a path is passed without a scheme, it is treated as a local file path and che
 ## `file://` Resolution
 
 For `file://` URIs, the path is converted to a local filesystem path and checked directly.
-The file must exist and be readable.
+The path can point to either a file or a directory, and it must exist.
 
 ## `package://` and `model://` Resolution
 
@@ -75,4 +75,4 @@ These directories are searched in addition to default environment-based and acti
 
 ## Failure Behavior
 
-If no matching file is found, the resolver returns an empty `std::optional` and fills the error message when provided.
+If no matching path is found, the resolver returns an empty `std::optional` and fills the error message when provided.
