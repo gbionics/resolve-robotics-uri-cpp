@@ -29,7 +29,7 @@ configure = { cmd = [
 ]}
 
 build = { cmd = "cmake --build .build --config Release", depends-on = ["configure"] }
-test = { cmd = "ctest --test-dir .build --build-config Release", depends-on = ["build"] }
+test = { cmd = "ctest --test-dir .build --build-config Release --output-on-failure", depends-on = ["build"] }
 install = { cmd = ["cmake", "--install", ".build", "--config", "Release"], depends-on = ["build"] }
 uninstall = { cmd = ["cmake", "--build", ".build", "--target", "uninstall"]}
 format = { cmd = "clang-format -i *.cpp *.h ./test/*.cpp" }
