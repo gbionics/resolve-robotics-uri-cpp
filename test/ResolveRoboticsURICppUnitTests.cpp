@@ -79,6 +79,17 @@ std::filesystem::path writeDirectory(const std::filesystem::path& directoryPath)
     return directoryPath;
 }
 
+std::string fileUriFromPath(const std::filesystem::path& path)
+{
+    const std::string genericPath = path.generic_string();
+    if (!genericPath.empty() && genericPath.front() == '/')
+    {
+        return "file://" + genericPath;
+    }
+
+    return "file:///" + genericPath;
+}
+
 std::vector<std::string> supportedEnvVars()
 {
     return {"ROS_PACKAGE_PATH",
@@ -222,7 +233,7 @@ TEST_CASE("ResolveExistingDirectoryFileUri")
         writeDirectory(std::filesystem::temp_directory_path() / "rru_cpp_file_uri_dir_test"
                        / "nested_dir");
 
-    auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI("file://" + directoryPath.string());
+    auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI(fileUriFromPath(directoryPath));
     REQUIRE(resolved.has_value());
     CHECK(std::filesystem::equivalent(std::filesystem::path(resolved.value()), directoryPath));
 

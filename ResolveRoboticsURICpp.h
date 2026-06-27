@@ -50,6 +50,40 @@ inline bool isPathExisting(const std::string& filename)
     return std::filesystem::exists(filename, ec);
 }
 
+inline std::string fileUriToLocalPath(const std::string& uriFilename, const bool isWindows)
+{
+    const std::string fileScheme = "file:";
+    if (uriFilename.substr(0, fileScheme.size()) != fileScheme)
+    {
+        return uriFilename;
+    }
+
+    std::string localPath = uriFilename.substr(fileScheme.size());
+
+    if (isWindows)
+    {
+        while (!localPath.empty() && (localPath.front() == '/' || localPath.front() == '\\'))
+        {
+            localPath.erase(0, 1);
+        }
+
+        return cleanPathSeparator(localPath, isWindows);
+    }
+
+    std::size_t leadingSlashCount = 0;
+    while (leadingSlashCount < localPath.size() && localPath[leadingSlashCount] == '/')
+    {
+        ++leadingSlashCount;
+    }
+
+    if (leadingSlashCount > 1)
+    {
+        localPath.erase(0, leadingSlashCount - 1);
+    }
+
+    return localPath;
+}
+
 inline std::string joinPaths(const std::string& base,
                              const std::string& suffix,
                              const bool isWindows)
@@ -155,12 +189,11 @@ resolveRoboticsURI(const std::string& uriFilename,
     isWindows = true;
 #endif
 
-    // If file starts with file:/, remove file:/ and return if it exists
-    std::string fileUriPrefix = "file:/";
-    if (uriFilename.substr(0, fileUriPrefix.size()) == fileUriPrefix)
+    // If path starts with file:, convert to local path and return if it exists.
+    const std::string fileScheme = "file:";
+    if (uriFilename.substr(0, fileScheme.size()) == fileScheme)
     {
-        std::string uriFilename_noprefix = uriFilename;
-        uriFilename_noprefix.erase(0, fileUriPrefix.size());
+        const std::string uriFilename_noprefix = fileUriToLocalPath(uriFilename, isWindows);
 
         if (isPathExisting(uriFilename_noprefix))
         {
