@@ -73,6 +73,12 @@ std::filesystem::path writeFile(const std::filesystem::path& filePath,
     return filePath;
 }
 
+std::filesystem::path writeDirectory(const std::filesystem::path& directoryPath)
+{
+    std::filesystem::create_directories(directoryPath);
+    return directoryPath;
+}
+
 std::vector<std::string> supportedEnvVars()
 {
     return {"ROS_PACKAGE_PATH",
@@ -193,6 +199,51 @@ TEST_CASE("AdditionalPackageDirs")
         ResolveRoboticsURICpp::resolveRoboticsURI("package://example_cpp_package/cube.urdf", options);
     REQUIRE(resolved.has_value());
     CHECK(resolved.value() == cubeUrdf.string());
+
+    std::filesystem::remove_all(additionalDir);
+}
+
+TEST_CASE("ResolveExistingDirectoryPath")
+{
+    const std::filesystem::path directoryPath =
+        writeDirectory(std::filesystem::temp_directory_path() / "rru_cpp_existing_dir_test"
+                       / "nested_dir");
+
+    auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI(directoryPath.string());
+    REQUIRE(resolved.has_value());
+    CHECK(resolved.value() == directoryPath.string());
+
+    std::filesystem::remove_all(std::filesystem::temp_directory_path() / "rru_cpp_existing_dir_test");
+}
+
+TEST_CASE("ResolveExistingDirectoryFileUri")
+{
+    const std::filesystem::path directoryPath =
+        writeDirectory(std::filesystem::temp_directory_path() / "rru_cpp_file_uri_dir_test"
+                       / "nested_dir");
+
+    auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI("file://" + directoryPath.string());
+    REQUIRE(resolved.has_value());
+    CHECK(std::filesystem::equivalent(std::filesystem::path(resolved.value()), directoryPath));
+
+    std::filesystem::remove_all(std::filesystem::temp_directory_path() / "rru_cpp_file_uri_dir_test");
+}
+
+TEST_CASE("ResolveDirectoryFromPackageUri")
+{
+    const std::filesystem::path additionalDir =
+        std::filesystem::temp_directory_path() / "rru_cpp_package_dir_uri_test";
+    const std::filesystem::path packageDirectory =
+        writeDirectory(additionalDir / "example_cpp_package" / "meshes");
+
+    ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
+    options.excludeActivePrefix = true;
+    options.packageDirs.push_back(additionalDir.string());
+
+    auto resolved =
+        ResolveRoboticsURICpp::resolveRoboticsURI("package://example_cpp_package/meshes", options);
+    REQUIRE(resolved.has_value());
+    CHECK(resolved.value() == packageDirectory.string());
 
     std::filesystem::remove_all(additionalDir);
 }
