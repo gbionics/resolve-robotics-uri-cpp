@@ -258,3 +258,132 @@ TEST_CASE("ResolveDirectoryFromPackageUri")
 
     std::filesystem::remove_all(additionalDir);
 }
+
+TEST_CASE("RobotSpecificFile")
+{
+    using namespace ResolveRoboticsURICpp;
+    std::vector<std::unique_ptr<ScopedEnvVar>> envs;
+    for (const auto& name : supportedEnvVars())
+    {
+        envs.emplace_back(new ScopedEnvVar(name));
+        envs.back()->unset();
+    }
+    ScopedEnvVar active("ACTIVE_ROBOT_NAME"), yarp("YARP_ROBOT_NAME");
+    active.unset();
+    yarp.unset();
+    const auto base = std::filesystem::temp_directory_path() / "rru_cpp_robot_specific_test";
+    struct Cleanup
+    {
+        std::filesystem::path base, cwd = std::filesystem::current_path();
+        ~Cleanup()
+        {
+            std::filesystem::current_path(cwd);
+            std::filesystem::remove_all(base);
+            clearRobotSpecificFileCache();
+        }
+    } cleanup{base};
+    std::filesystem::remove_all(base);
+    const auto cwd = writeDirectory(base / "cwd");
+    std::filesystem::current_path(cwd);
+    const auto root = base / "share";
+    const auto fallback = writeFile(root / "ControlLib/config/controller.ini");
+    const auto overrideFile
+        = writeFile(root / "CompanyConfigurations/robots/MyRobot/config/controller.ini");
+    const auto yarpFile = writeFile(root / "Other/robots/YarpRobot/config/controller.ini");
+    ResolveRoboticsURIOptions options;
+    options.excludeActivePrefix = true;
+    options.packageDirs = {root.string()};
+    const auto resolve
+        = [&] { return resolveRobotSpecificFile("config/controller.ini", "ControlLib", options); };
+    CHECK(resolve() == fallback.string());
+    yarp.set("YarpRobot");
+    CHECK(resolve() == yarpFile.string());
+    active.set("MyRobot");
+    CHECK(resolve() == overrideFile.string());
+    auto local = writeFile(cwd / "config/controller.ini");
+    CHECK(resolve() == local.string());
+    std::filesystem::remove(local);
+    writeDirectory(local);
+    CHECK(resolve() == overrideFile.string());
+    active.set("MissingRobot");
+    CHECK(resolve() == fallback.string());
+    active.set("");
+    CHECK(resolve() == yarpFile.string());
+    active.set("MyRobot");
+    std::filesystem::remove(overrideFile);
+    writeDirectory(overrideFile);
+    writeFile(root / "Nested/package/robots/MyRobot/config/controller.ini");
+    writeFile(root / "robots/MyRobot/config/controller.ini");
+    CHECK(resolve() == fallback.string());
+
+    // Newly installed robots directories require refreshing discovery.
+    const auto newFile = writeFile(root / "NewPackage/robots/MyRobot/config/controller.ini");
+    CHECK(resolve() == fallback.string());
+    clearRobotSpecificFileCache();
+    CHECK(resolve() == newFile.string());
+    std::filesystem::remove(newFile);
+    CHECK(resolve() == fallback.string());
+    writeFile(newFile);
+    CHECK(resolve() == newFile.string());
+    const auto first = writeFile(root / "A/robots/MyRobot/config/controller.ini");
+    clearRobotSpecificFileCache();
+    CHECK(resolve() == first.string());
+
+    // A changed root set discovers overrides without refreshing the cache.
+    const auto otherRoot = base / "other_share";
+    const auto otherOverride = writeFile(otherRoot / "Pkg/robots/MyRobot/config/controller.ini");
+    options.packageDirs = {otherRoot.string()};
+    CHECK(resolve() == otherOverride.string());
+    options.packageDirs = {root.string(), otherRoot.string()};
+    CHECK(resolve() == otherOverride.string()); // "other_share" sorts before "share".
+    std::filesystem::remove(otherOverride);
+    CHECK(resolve() == first.string());
+
+    ScopedEnvVar ament("AMENT_PREFIX_PATH");
+    ament.set(base.string());
+    options.packageDirs.clear();
+    CHECK(resolve() == first.string());
+    options.excludeEnvVars.insert("AMENT_PREFIX_PATH");
+    CHECK_FALSE(resolve().has_value());
+    options.packageDirs = {root.string()};
+    CHECK(resolve() == first.string());
+
+    // Explicit package URIs bypass both local files and robot overrides.
+    std::string uriError;
+    CHECK(resolveRobotSpecificFile("package://ControlLib/config/controller.ini", "", options,
+                                   uriError) == fallback.string());
+    active.set("../invalid");
+    CHECK(resolveRobotSpecificFile("package://ControlLib/config/controller.ini", "other/package",
+                                   options, uriError) == fallback.string());
+    active.set("MyRobot");
+    CHECK_FALSE(resolveRobotSpecificFile("package://ControlLib/missing.ini", "", options,
+                                         uriError).has_value());
+    CHECK_FALSE(uriError.empty());
+    CHECK(resolveRobotSpecificFile("config/controller.ini", "", options) == first.string());
+
+    std::string error = "old error";
+    CHECK(resolveRobotSpecificFile("config/controller.ini", "ControlLib", options, error)
+          == first.string());
+    CHECK(error.empty());
+    for (const auto& path : {"", "../outside", "/absolute", "file:/absolute"})
+    {
+        CHECK_FALSE(resolveRobotSpecificFile(path, "ControlLib", options, error).has_value());
+        CHECK_FALSE(error.empty());
+    }
+    CHECK_FALSE(resolveRobotSpecificFile("file", "a/b", options).has_value());
+    active.set("../outside");
+    CHECK_FALSE(resolve().has_value());
+    active.unset();
+    yarp.unset();
+    std::filesystem::remove(fallback);
+    writeDirectory(fallback);
+    CHECK_FALSE(resolve().has_value());
+    // No package means no default lookup, even directly under a search root.
+    writeFile(root / "config/controller.ini");
+    CHECK_FALSE(resolveRobotSpecificFile("config/controller.ini", "", options).has_value());
+    // Exercise the default-options overloads as well.
+    auto uniqueLocal = writeFile(cwd / "local.ini");
+    CHECK(resolveRobotSpecificFile("local.ini", "ControlLib") == uniqueLocal.string());
+    CHECK(resolveRobotSpecificFile("local.ini") == uniqueLocal.string());
+    CHECK(resolveRobotSpecificFile("local.ini", "ControlLib", error) == uniqueLocal.string());
+}

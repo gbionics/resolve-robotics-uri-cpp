@@ -4,9 +4,12 @@
 #ifndef RESOLVE_ROBOTICS_URI_CPP_H
 #define RESOLVE_ROBOTICS_URI_CPP_H
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -84,9 +87,8 @@ inline std::string fileUriToLocalPath(const std::string& uriFilename, const bool
     return localPath;
 }
 
-inline std::string joinPaths(const std::string& base,
-                             const std::string& suffix,
-                             const bool isWindows)
+inline std::string
+joinPaths(const std::string& base, const std::string& suffix, const bool isWindows)
 {
     if (base.empty())
     {
@@ -131,8 +133,8 @@ inline bool getFilePath(const std::string& filename,
 
     for (const std::string& path : paths)
     {
-        const std::string testPath =
-            cleanPathSeparator(joinPaths(path, filenameNoPrefix, isWindows), isWindows);
+        const std::string testPath
+            = cleanPathSeparator(joinPaths(path, filenameNoPrefix, isWindows), isWindows);
         if (isPathExisting(testPath))
         {
             outputFileName = testPath;
@@ -156,8 +158,8 @@ inline std::unordered_map<std::string, bool> getSupportedEnvVars()
             {"AMENT_PREFIX_PATH", true}};
 }
 
-inline bool isEnvVarExcluded(const std::string& envVarName,
-                             const ResolveRoboticsURIOptions& options)
+inline bool
+isEnvVarExcluded(const std::string& envVarName, const ResolveRoboticsURIOptions& options)
 {
     return options.excludeEnvVars.find(envVarName) != options.excludeEnvVars.end();
 }
@@ -179,62 +181,13 @@ inline std::optional<std::string> getActivePrefixPath()
     return {};
 }
 
-inline std::optional<std::string>
-resolveRoboticsURI(const std::string& uriFilename,
-                   const ResolveRoboticsURIOptions& options,
-                   std::string& errorMessage)
+inline std::unordered_set<std::string> getSearchPaths(const ResolveRoboticsURIOptions& options)
 {
     bool isWindows = false;
 #ifdef _WIN32
     isWindows = true;
 #endif
-
-    // If path starts with file:, convert to local path and return if it exists.
-    const std::string fileScheme = "file:";
-    if (uriFilename.substr(0, fileScheme.size()) == fileScheme)
-    {
-        const std::string uriFilename_noprefix = fileUriToLocalPath(uriFilename, isWindows);
-
-        if (isPathExisting(uriFilename_noprefix))
-        {
-            return uriFilename_noprefix;
-        }
-    }
-
-    // If the file exists with removing any prefix, just return it
-    if (isPathExisting(uriFilename))
-    {
-        return uriFilename;
-    }
-
-    const std::string packageUriPrefix = "package:/";
-    const std::string modelUriPrefix = "model:/";
-
-    if (uriFilename.substr(0, packageUriPrefix.size()) != packageUriPrefix
-        && uriFilename.substr(0, modelUriPrefix.size()) != modelUriPrefix)
-    {
-        // The uri does not start with file:/ (earlier check, is not a file path
-        // or start with model:/ or package:/, we can't resolve it
-        errorMessage = "ResolveRoboticsURICpp: URI " + uriFilename
-                       + " is not a existing file path and does not start with file:/, package:/ "
-                         "or model:/, it is not possible to resolve it.";
-        return {};
-    }
-
-    std::string uriPrefix;
-    if (uriFilename.substr(0, packageUriPrefix.size()) == packageUriPrefix)
-    {
-        uriPrefix = packageUriPrefix;
-    }
-
-    if (uriFilename.substr(0, modelUriPrefix.size()) == modelUriPrefix)
-    {
-        uriPrefix = modelUriPrefix;
-    }
-
-    // Actually solve it
-
-    // At this point, let's process the actual case of package:/ or model:/ URIs
+    // Collect package roots shared by URI and robot-specific resolution.
     std::unordered_set<std::string> pathList;
 
     // Extract list of directories where to search for the file
@@ -294,6 +247,65 @@ resolveRoboticsURI(const std::string& uriFilename,
         }
     }
 
+    return pathList;
+}
+
+inline std::optional<std::string> resolveRoboticsURI(const std::string& uriFilename,
+                                                     const ResolveRoboticsURIOptions& options,
+                                                     std::string& errorMessage)
+{
+    bool isWindows = false;
+#ifdef _WIN32
+    isWindows = true;
+#endif
+
+    // If path starts with file:, convert to local path and return if it exists.
+    const std::string fileScheme = "file:";
+    if (uriFilename.substr(0, fileScheme.size()) == fileScheme)
+    {
+        const std::string uriFilename_noprefix = fileUriToLocalPath(uriFilename, isWindows);
+
+        if (isPathExisting(uriFilename_noprefix))
+        {
+            return uriFilename_noprefix;
+        }
+    }
+
+    // If the file exists with removing any prefix, just return it
+    if (isPathExisting(uriFilename))
+    {
+        return uriFilename;
+    }
+
+    const std::string packageUriPrefix = "package:/";
+    const std::string modelUriPrefix = "model:/";
+
+    if (uriFilename.substr(0, packageUriPrefix.size()) != packageUriPrefix
+        && uriFilename.substr(0, modelUriPrefix.size()) != modelUriPrefix)
+    {
+        // The uri does not start with file:/ (earlier check, is not a file path
+        // or start with model:/ or package:/, we can't resolve it
+        errorMessage = "ResolveRoboticsURICpp: URI " + uriFilename
+                       + " is not a existing file path and does not start with file:/, package:/ "
+                         "or model:/, it is not possible to resolve it.";
+        return {};
+    }
+
+    std::string uriPrefix;
+    if (uriFilename.substr(0, packageUriPrefix.size()) == packageUriPrefix)
+    {
+        uriPrefix = packageUriPrefix;
+    }
+
+    if (uriFilename.substr(0, modelUriPrefix.size()) == modelUriPrefix)
+    {
+        uriPrefix = modelUriPrefix;
+    }
+
+    // Actually solve it
+
+    const auto pathList = getSearchPaths(options);
+
     std::string realAbsoluteFileName;
     bool ok = getFilePath(uriFilename, uriPrefix, pathList, isWindows, realAbsoluteFileName);
 
@@ -326,6 +338,207 @@ inline std::optional<std::string> resolveRoboticsURI(const std::string& uriFilen
     std::string dummyErrorMessage;
     ResolveRoboticsURIOptions defaultOptions;
     return resolveRoboticsURI(uriFilename, defaultOptions, dummyErrorMessage);
+}
+
+namespace detail
+{
+struct RobotDirectoryCache
+{
+    std::mutex mutex;
+    std::map<std::vector<std::filesystem::path>, std::vector<std::filesystem::path>> directories;
+};
+
+inline RobotDirectoryCache& robotDirectoryCache()
+{
+    static RobotDirectoryCache cache;
+    return cache;
+}
+
+inline std::vector<std::filesystem::path>
+robotDirectories(const std::vector<std::filesystem::path>& roots)
+{
+    auto& cache = robotDirectoryCache();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    const auto found = cache.directories.find(roots);
+    if (found != cache.directories.end())
+    {
+        return found->second;
+    }
+    std::vector<std::filesystem::path> result;
+    for (const auto& root : roots)
+    {
+        std::error_code ec;
+        std::filesystem::directory_iterator it(root, ec), end;
+        while (!ec && it != end)
+        {
+            const auto robots = it->path() / "robots";
+            if (it->is_directory(ec) && std::filesystem::is_directory(robots, ec))
+            {
+                const auto canonical = std::filesystem::canonical(robots, ec);
+                if (!ec)
+                {
+                    result.push_back(canonical);
+                }
+            }
+            ec.clear();
+            it.increment(ec);
+        }
+    }
+    std::sort(result.begin(), result.end());
+    result.erase(std::unique(result.begin(), result.end()), result.end());
+    if (cache.directories.size() >= 128)
+    {
+        cache.directories.clear();
+    }
+    cache.directories.emplace(roots, result);
+    return result;
+}
+} // namespace detail
+
+/// Refresh discovery after installing new packages or robots directories.
+inline void clearRobotSpecificFileCache()
+{
+    auto& cache = detail::robotDirectoryCache();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    cache.directories.clear();
+}
+
+/** Resolve a regular file from the working directory, robot overrides, or package default.
+ * Overrides: <search-root>/<any-package>/robots/<robot>/<relativePath>.
+ * ACTIVE_ROBOT_NAME takes precedence over nonempty YARP_ROBOT_NAME.
+ * Search options are identical to resolveRoboticsURI. Within each tier the first
+ * canonical path in lexical order wins. Discovery is cached per search-root set.
+ * Returns an absolute canonical path, or an empty optional and an error on failure
+ * (including invalid input). A package:// input delegates to resolveRoboticsURI
+ * with the same options, ignoring packageName and robot selection. An empty or
+ * omitted packageName skips package-default lookup. Other paths must be nonempty,
+ * relative, without '..' or a URI scheme; nonempty package and robot names must
+ * each be a single directory component.
+ */
+inline std::optional<std::string> resolveRobotSpecificFile(const std::string& relativePath,
+                                                           const std::string& packageName,
+                                                           const ResolveRoboticsURIOptions& options,
+                                                           std::string& errorMessage)
+{
+    errorMessage.clear();
+    if (relativePath.rfind("package://", 0) == 0)
+    {
+        return resolveRoboticsURI(relativePath, options, errorMessage);
+    }
+    const std::filesystem::path path(relativePath);
+    const auto validName = [](const std::string& name) {
+        return !name.empty() && name != "." && name != ".."
+               && name.find_first_of("/\\:") == std::string::npos;
+    };
+    if (relativePath.empty() || path.has_root_path()
+        || relativePath.substr(0, relativePath.find_first_of("/\\")).find(':') != std::string::npos
+        || std::find(path.begin(), path.end(), std::filesystem::path("..")) != path.end()
+        || (!packageName.empty() && !validName(packageName)))
+    {
+        errorMessage = "Invalid relative path or package name for resolveRobotSpecificFile";
+        return {};
+    }
+    const auto regularFile
+        = [](const std::filesystem::path& candidate) -> std::optional<std::string> {
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(candidate, ec))
+        {
+            auto canonical = std::filesystem::canonical(candidate, ec);
+            if (!ec)
+            {
+                return canonical.string();
+            }
+        }
+        return {};
+    };
+    if (auto local = regularFile(path))
+    {
+        return local;
+    }
+    const char* robotEnv = std::getenv("ACTIVE_ROBOT_NAME");
+    if (!robotEnv || !*robotEnv)
+    {
+        robotEnv = std::getenv("YARP_ROBOT_NAME");
+    }
+    const std::string robot = robotEnv ? robotEnv : "";
+    if (!robot.empty() && !validName(robot))
+    {
+        errorMessage = "Robot name must be a single directory component";
+        return {};
+    }
+    std::vector<std::filesystem::path> roots;
+    for (const auto& root : getSearchPaths(options))
+    {
+        std::error_code ec;
+        if (std::filesystem::is_directory(root, ec))
+        {
+            auto canonical = std::filesystem::canonical(root, ec);
+            if (!ec)
+            {
+                roots.push_back(canonical);
+            }
+        }
+    }
+    std::sort(roots.begin(), roots.end());
+    roots.erase(std::unique(roots.begin(), roots.end()), roots.end());
+    const auto find = [&](const std::vector<std::filesystem::path>& bases,
+                          const std::filesystem::path& suffix) -> std::optional<std::string> {
+        std::vector<std::string> matches;
+        for (const auto& base : bases)
+        {
+            if (auto match = regularFile(base / suffix))
+            {
+                matches.push_back(*match);
+            }
+        }
+        if (matches.empty())
+        {
+            return {};
+        }
+        return *std::min_element(matches.begin(), matches.end());
+    };
+    if (!robot.empty())
+    {
+        if (auto overrideFile
+            = find(detail::robotDirectories(roots), std::filesystem::path(robot) / path))
+        {
+            return overrideFile;
+        }
+    }
+    if (!packageName.empty())
+    {
+        if (auto defaultFile = find(roots, std::filesystem::path(packageName) / path))
+        {
+            return defaultFile;
+        }
+    }
+    errorMessage = "No robot-specific or default file '" + relativePath + "' found for package '"
+                   + packageName + "'";
+    return {};
+}
+
+inline std::optional<std::string> resolveRobotSpecificFile(const std::string& relativePath,
+                                                           const std::string& packageName,
+                                                           const ResolveRoboticsURIOptions& options)
+{
+    std::string errorMessage;
+    return resolveRobotSpecificFile(relativePath, packageName, options, errorMessage);
+}
+
+inline std::optional<std::string> resolveRobotSpecificFile(const std::string& relativePath,
+                                                           const std::string& packageName,
+                                                           std::string& errorMessage)
+{
+    return resolveRobotSpecificFile(relativePath,
+                                    packageName,
+                                    ResolveRoboticsURIOptions{},
+                                    errorMessage);
+}
+
+inline std::optional<std::string>
+resolveRobotSpecificFile(const std::string& relativePath, const std::string& packageName = "")
+{
+    return resolveRobotSpecificFile(relativePath, packageName, ResolveRoboticsURIOptions{});
 }
 
 } // namespace ResolveRoboticsURICpp

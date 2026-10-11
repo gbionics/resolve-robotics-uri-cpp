@@ -1,6 +1,6 @@
-# File Search Rules
+# `ResolveRoboticsURICpp::resolveRoboticsURI` File Search Rules
 
-`resolve-robotics-uri-cpp` resolves URIs by following the rules below.
+`ResolveRoboticsURICpp::resolveRoboticsURI` resolves URIs by following the rules below.
 
 ## Supported URI Schemes
 
@@ -76,3 +76,42 @@ These directories are searched in addition to default environment-based and acti
 ## Failure Behavior
 
 If no matching path is found, the resolver returns an empty `std::optional` and fills the error message when provided.
+
+# Robot-specific files found by `ResolveRoboticsURICpp::resolveRobotSpecificFile`
+
+`ResolveRoboticsURICpp::resolveRobotSpecificFile(relativePath, packageName="")`
+resolves a relative file path for a specific robot. The package name is optional.
+It accepts the same search options as `resolveRoboticsURI`.
+
+An input beginning with `package://` delegates directly to `resolveRoboticsURI`,
+forwarding all search options. It ignores `packageName` and robot selection;
+working-directory and robot overrides do not apply to that input.
+
+Lookup of `ResolveRoboticsURICpp::resolveRobotSpecificFile` in three steps:
+
+1. Return the file relative to the current working directory, if it is a regular file.
+2. Select the robot from nonempty `ACTIVE_ROBOT_NAME`, falling back to nonempty
+   `YARP_ROBOT_NAME`. Search `package://<package>/robots/<robot>/<relative-path>`
+   for every immediate package directory in the normal search roots.
+3. If a nonempty package name was specified, and either no override exists or no
+   robot is selected, search `package://<default-package>/<relative-path>`.
+   If the package name is omitted or empty, this step is skipped.
+
+For relative paths, the result must be a regular file and is returned as an
+absolute path string with symlinks resolved in a `std::optional<std::string>`.
+Missing files, invalid relative paths, or invalid nonempty package/robot names
+return an empty optional and fill the error message when provided. Multiple
+matches in the winning tier return the first distinct canonical path in lexical
+order.
+
+# Command-line behaviour
+
+The CLI uses robot-specific resolution by default for relative paths and
+`package://` inputs. The latter delegate to the original URI resolver as described
+above. `file:` and `model:` URIs and absolute paths use the original URI resolver.
+Use `--package-name NAME` to enable the package-default tier for relative paths;
+without it, step 3 is skipped.
+
+`--do-not-use-robot-specific-resolve` selects the original URI resolver for every
+input, restoring the previous CLI behavior. In that mode, `--package-name` has no
+effect. All existing search-path and exclusion options still apply in both modes.

@@ -14,17 +14,36 @@ int main(int argc, char* argv[])
     {
         std::cerr << "resolve-robotics-uri-cpp: Wrong number of parameters. Usage " << argv[0]
                   << " [--exclude-active-prefix] [--exclude-env-var NAME]"
-                     " [--package-dir PATH] URI"
+                     " [--package-dir PATH] [--package-name NAME]"
+                     " [--do-not-use-robot-specific-resolve] URI_OR_PATH"
                   << std::endl;
         return EXIT_FAILURE;
     }
 
     ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
     std::string uri;
+    std::string packageName;
+    bool useRobotSpecificResolve = true;
 
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
+        if (arg == "--do-not-use-robot-specific-resolve")
+        {
+            useRobotSpecificResolve = false;
+            continue;
+        }
+        if (arg == "--package-name")
+        {
+            if (i + 1 >= argc)
+            {
+                std::cerr << "resolve-robotics-uri-cpp: Missing argument for --package-name"
+                          << std::endl;
+                return EXIT_FAILURE;
+            }
+            packageName = argv[++i];
+            continue;
+        }
         if (arg == "--exclude-active-prefix")
         {
             options.excludeActivePrefix = true;
@@ -73,14 +92,18 @@ int main(int argc, char* argv[])
     }
 
     std::string errorMessage;
-    auto absolute_file_name = ResolveRoboticsURICpp::resolveRoboticsURI(uri, options, errorMessage);
+    const bool directURI = uri.rfind("file:", 0) == 0 || uri.rfind("model:", 0) == 0
+                           || std::filesystem::path(uri).is_absolute();
+    auto absolute_file_name = useRobotSpecificResolve && !directURI
+        ? ResolveRoboticsURICpp::resolveRobotSpecificFile(uri, packageName, options, errorMessage)
+        : ResolveRoboticsURICpp::resolveRoboticsURI(uri, options, errorMessage);
 
     if (absolute_file_name.has_value())
     {
         std::cout << absolute_file_name.value();
     } else
     {
-        std::cerr << "resolve-robotics-uri-cpp: Impossible to find URI " << argv[1] << ", "
+        std::cerr << "resolve-robotics-uri-cpp: Impossible to find URI " << uri << ", "
                   << errorMessage << std::endl;
         return EXIT_FAILURE;
     }
