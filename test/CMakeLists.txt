@@ -36,12 +36,9 @@ rruc_add_unit_test(NAME ResolveRoboticsURICpp
                    LINKS ResolveRoboticsURICpp::ResolveRoboticsURICpp)
 
 if(RRUC_BUILD_TOOL)
-    foreach(legacy OFF ON)
-        add_test(NAME RobotSpecificCLI_${legacy}
-                 COMMAND ${CMAKE_COMMAND}
-                         -DTOOL=$<TARGET_FILE:resolve-robotics-uri-cpp>
-                         -DTEST_DIRECTORY=${CMAKE_CURRENT_BINARY_DIR}/cli_${legacy}
-                         -DLEGACY=${legacy}
-                         -P ${CMAKE_CURRENT_SOURCE_DIR}/RobotSpecificCLI.cmake)
-    endforeach()
+    add_test(NAME RobotSpecificCLI
+             COMMAND ${CMAKE_COMMAND}
+                     -DTOOL=$<TARGET_FILE:resolve-robotics-uri-cpp>
+                     -DTEST_DIRECTORY=${CMAKE_CURRENT_BINARY_DIR}/cli
+                     -P ${CMAKE_CURRENT_SOURCE_DIR}/RobotSpecificCLI.cmake)
 endif()

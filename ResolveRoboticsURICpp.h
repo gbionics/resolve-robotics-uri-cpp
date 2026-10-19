@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -20,6 +21,17 @@
 namespace ResolveRoboticsURICpp
 {
 
+struct ResolveRoboticsURIOptions;
+namespace detail
+{
+inline std::optional<std::string> resolveRobotURI(const std::string& uri,
+                                                  const ResolveRoboticsURIOptions& options,
+                                                  std::string& errorMessage);
+}
+
+using URIResolver = std::function<
+    std::optional<std::string>(const std::string&, const ResolveRoboticsURIOptions&, std::string&)>;
+
 struct ResolveRoboticsURIOptions
 {
     // Disable searching inside the active environment prefix (<prefix>/share).
@@ -30,6 +42,13 @@ struct ResolveRoboticsURIOptions
 
     // Additional directories to search as-is.
     std::vector<std::string> packageDirs;
+
+    // Optional default package for robot://, also available to other URI overrides.
+    std::string defaultPackageName;
+
+    // Longest matching prefix wins; callbacks receive the full URI and options.
+    // Clear this map to disable overrides. A selected callback owns failures too.
+    std::map<std::string, URIResolver> uri_override{{"robot://", detail::resolveRobotURI}};
 };
 
 inline std::string cleanPathSeparator(const std::string& filename, const bool isWindows)
@@ -259,6 +278,27 @@ inline std::optional<std::string> resolveRoboticsURI(const std::string& uriFilen
     isWindows = true;
 #endif
 
+    errorMessage.clear();
+    const URIResolver* resolver = nullptr;
+    std::size_t prefixLength = 0;
+    for (const auto& entry : options.uri_override)
+    {
+        if (entry.first.empty() || !entry.second)
+        {
+            errorMessage = "URI overrides require nonempty prefixes and callbacks";
+            return {};
+        }
+        if (entry.first.size() > prefixLength && uriFilename.rfind(entry.first, 0) == 0)
+        {
+            resolver = &entry.second;
+            prefixLength = entry.first.size();
+        }
+    }
+    if (resolver)
+    {
+        return (*resolver)(uriFilename, options, errorMessage);
+    }
+
     // If path starts with file:, convert to local path and return if it exists.
     const std::string fileScheme = "file:";
     if (uriFilename.substr(0, fileScheme.size()) == fileScheme)
@@ -403,28 +443,14 @@ inline void clearRobotSpecificFileCache()
     cache.directories.clear();
 }
 
-/** Resolve a regular file from the working directory, robot overrides, or package default.
- * Overrides: <search-root>/<any-package>/robots/<robot>/<relativePath>.
- * ACTIVE_ROBOT_NAME takes precedence over nonempty YARP_ROBOT_NAME.
- * Search options are identical to resolveRoboticsURI. Within each tier the first
- * canonical path in lexical order wins. Discovery is cached per search-root set.
- * Returns an absolute canonical path, or an empty optional and an error on failure
- * (including invalid input). A package:// input delegates to resolveRoboticsURI
- * with the same options, ignoring packageName and robot selection. An empty or
- * omitted packageName skips package-default lookup. Other paths must be nonempty,
- * relative, without '..' or a URI scheme; nonempty package and robot names must
- * each be a single directory component.
- */
-inline std::optional<std::string> resolveRobotSpecificFile(const std::string& relativePath,
-                                                           const std::string& packageName,
-                                                           const ResolveRoboticsURIOptions& options,
-                                                           std::string& errorMessage)
+namespace detail
 {
-    errorMessage.clear();
-    if (relativePath.rfind("package://", 0) == 0)
-    {
-        return resolveRoboticsURI(relativePath, options, errorMessage);
-    }
+inline std::optional<std::string> resolveRobotURI(const std::string& uri,
+                                                  const ResolveRoboticsURIOptions& options,
+                                                  std::string& errorMessage)
+{
+    const std::string relativePath = uri.substr(std::string("robot://").size());
+    const std::string& defaultPackageName = options.defaultPackageName;
     const std::filesystem::path path(relativePath);
     const auto validName = [](const std::string& name) {
         return !name.empty() && name != "." && name != ".."
@@ -433,9 +459,9 @@ inline std::optional<std::string> resolveRobotSpecificFile(const std::string& re
     if (relativePath.empty() || path.has_root_path()
         || relativePath.substr(0, relativePath.find_first_of("/\\")).find(':') != std::string::npos
         || std::find(path.begin(), path.end(), std::filesystem::path("..")) != path.end()
-        || (!packageName.empty() && !validName(packageName)))
+        || (!defaultPackageName.empty() && !validName(defaultPackageName)))
     {
-        errorMessage = "Invalid relative path or package name for resolveRobotSpecificFile";
+        errorMessage = "Invalid relative path or package name for robot:// URI";
         return {};
     }
     const auto regularFile
@@ -505,41 +531,19 @@ inline std::optional<std::string> resolveRobotSpecificFile(const std::string& re
             return overrideFile;
         }
     }
-    if (!packageName.empty())
+    if (!defaultPackageName.empty())
     {
-        if (auto defaultFile = find(roots, std::filesystem::path(packageName) / path))
+        if (auto defaultFile = find(roots, std::filesystem::path(defaultPackageName) / path))
         {
             return defaultFile;
         }
     }
     errorMessage = "No robot-specific or default file '" + relativePath + "' found for package '"
-                   + packageName + "'";
+                   + defaultPackageName + "'";
     return {};
 }
 
-inline std::optional<std::string> resolveRobotSpecificFile(const std::string& relativePath,
-                                                           const std::string& packageName,
-                                                           const ResolveRoboticsURIOptions& options)
-{
-    std::string errorMessage;
-    return resolveRobotSpecificFile(relativePath, packageName, options, errorMessage);
-}
-
-inline std::optional<std::string> resolveRobotSpecificFile(const std::string& relativePath,
-                                                           const std::string& packageName,
-                                                           std::string& errorMessage)
-{
-    return resolveRobotSpecificFile(relativePath,
-                                    packageName,
-                                    ResolveRoboticsURIOptions{},
-                                    errorMessage);
-}
-
-inline std::optional<std::string>
-resolveRobotSpecificFile(const std::string& relativePath, const std::string& packageName = "")
-{
-    return resolveRobotSpecificFile(relativePath, packageName, ResolveRoboticsURIOptions{});
-}
+} // namespace detail
 
 } // namespace ResolveRoboticsURICpp
 

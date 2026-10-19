@@ -77,41 +77,51 @@ These directories are searched in addition to default environment-based and acti
 
 If no matching path is found, the resolver returns an empty `std::optional` and fills the error message when provided.
 
-# Robot-specific files found by `ResolveRoboticsURICpp::resolveRobotSpecificFile`
+# URI overrides
 
-`ResolveRoboticsURICpp::resolveRobotSpecificFile(relativePath, packageName="")`
-resolves a relative file path for a specific robot. The package name is optional.
-It accepts the same search options as `resolveRoboticsURI`.
+Overrides are checked before normal URI/path processing. Keys are nonempty URI
+prefixes; the longest matching prefix selects one callback. The callback receives
+the full input URI and search options. Its result or failure is final; no other
+handler or normal lookup is tried afterward. Empty prefixes are invalid.
 
-An input beginning with `package://` delegates directly to `resolveRoboticsURI`,
-forwarding all search options. It ignores `packageName` and robot selection;
-working-directory and robot overrides do not apply to that input.
+`ResolveRoboticsURIOptions::uri_override` is a map from prefix strings to
+`URIResolver` callbacks, initialized with a `robot://` callback. Their signature is
+`std::optional<std::string>(const std::string& uri, const ResolveRoboticsURIOptions&,
+std::string& errorMessage)`. Empty callbacks are invalid. The error is cleared
+before dispatch; callbacks set it on failure. Clear the map to disable overrides,
+erase one prefix to remove a handler, or assign a callback to add/replace a handler.
 
-Lookup of `ResolveRoboticsURICpp::resolveRobotSpecificFile` in three steps:
+Callbacks can override built-in prefixes as well as new ones. When delegating to
+the resolver, remove the matching override (or disable overrides) to avoid recursion.
 
-1. Return the file relative to the current working directory, if it is a regular file.
+# Robot-specific files via `robot://`
+
+`robot://<relative-path>` resolves a robot-specific file. The optional default
+package is supplied separately (`ResolveRoboticsURIOptions::defaultPackageName`).
+The URI authority and path together form the relative path, so
+`robot://config/controller.ini` means `config/controller.ini`.
+
+1. Return the regular file relative to the working directory, if present.
 2. Select the robot from nonempty `ACTIVE_ROBOT_NAME`, falling back to nonempty
-   `YARP_ROBOT_NAME`. Search `package://<package>/robots/<robot>/<relative-path>`
-   for every immediate package directory in the normal search roots.
-3. If a nonempty package name was specified, and either no override exists or no
-   robot is selected, search `package://<default-package>/<relative-path>`.
-   If the package name is omitted or empty, this step is skipped.
+   `YARP_ROBOT_NAME`. Search `<root>/<package>/robots/<robot>/<relative-path>`
+   under every immediate package directory in the normal search roots.
+3. If a default package was supplied, search `<root>/<default-package>/<relative-path>`.
+   Otherwise skip this step.
 
-For relative paths, the result must be a regular file and is returned as an
-absolute path string with symlinks resolved in a `std::optional<std::string>`.
-Missing files, invalid relative paths, or invalid nonempty package/robot names
-return an empty optional and fill the error message when provided. Multiple
-matches in the winning tier return the first distinct canonical path in lexical
-order.
+Only regular files match. Results are absolute canonical paths. Empty, absolute,
+parent-traversing, or URI-valued relative paths are invalid. Nonempty robot and
+package names must each be a single directory component. Multiple matches in the
+winning tier return the first distinct canonical path in lexical order.
+Missing files and invalid inputs return an empty optional and set the error message.
+
+Discovery of package `robots` directories is cached by canonical search-root set
+(up to 128 entries). File results and robot selection are not cached. After
+installing new override packages, call `clearRobotSpecificFileCache()`
+to refresh discovery.
 
 # Command-line behaviour
 
-The CLI uses robot-specific resolution by default for relative paths and
-`package://` inputs. The latter delegate to the original URI resolver as described
-above. `file:` and `model:` URIs and absolute paths use the original URI resolver.
-Use `--package-name NAME` to enable the package-default tier for relative paths;
-without it, step 3 is skipped.
-
-`--do-not-use-robot-specific-resolve` selects the original URI resolver for every
-input, restoring the previous CLI behavior. In that mode, `--package-name` has no
-effect. All existing search-path and exclusion options still apply in both modes.
+The CLI passes its input to the URI resolver. Use `robot://config/controller.ini`
+for robot lookup and `--default-package-name NAME` to add a default package. Plain paths
+and other URI schemes retain normal resolution. Search path and exclusion flags
+apply to robot lookup too.

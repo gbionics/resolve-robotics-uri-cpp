@@ -94,33 +94,60 @@ std::optional<std::string> absolute_path =
 
 ## Robot-specific configuration files
 
-Use `resolveRobotSpecificFile` to let a separate robot configuration package
-override a default file installed by your software package:
+Use `robot://` with the existing resolver:
 
 ```cpp
-#include <ResolveRoboticsURICpp.h>
-
-auto absolute_path = ResolveRoboticsURICpp::resolveRobotSpecificFile(
-    "config/controller.ini", "ControlLib");
-if (!absolute_path) {
-    // Handle the missing configuration.
-}
+ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
+options.defaultPackageName = "ControlLib";
+auto absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI(
+    "robot://config/controller.ini", options);
 ```
 
-For example, install the default at `share/ControlLib/config/controller.ini`
-and an override at
-`share/CompanyRobotConfigurations/robots/MyRobot/config/controller.ini`. Set
-`ACTIVE_ROBOT_NAME=MyRobot` (or `YARP_ROBOT_NAME` as a fallback). A file at
-`config/controller.ini` in the working directory takes priority; otherwise the
-robot override takes priority over the default. The helper requires regular files
-and returns absolute paths. It accepts the same search options as the URI resolver.
+For example, install the default at `share/ControlLib/config/controller.ini` and
+an override at `share/CompanyRobotConfigurations/robots/MyRobot/config/controller.ini`.
+Set `ACTIVE_ROBOT_NAME=MyRobot` (or `YARP_ROBOT_NAME` as a fallback). The lookup is:
 
-Discovery of `robots` directories is cached. See [the search specification](rru_spec.md)
-for ordering, errors, and how to refresh discovery after installing new packages.
+1. A regular file at `config/controller.ini` in the working directory.
+2. The robot-specific file under any immediate package's `robots/<robot>` directory.
+3. The default package file, if a default package name was supplied.
 
-The package name is optional: omitting it skips the package-default lookup. An
-explicit `package://` input delegates to the original URI resolver, so it does not
-use working-directory or robot overrides.
+Results are absolute paths to regular files. Discovery of `robots` directories is
+cached; see [the search specification](rru_spec.md) for refresh and error behavior.
+Plain paths and `package://`, `model://`, and `file:` URIs keep their existing behavior.
+
+### Custom URI overrides
+
+`ResolveRoboticsURIOptions::uri_override` maps URI prefixes to callbacks and
+contains a `robot://` handler by default. The longest matching prefix wins,
+before normal resolution. Callbacks receive the full URI, options, and error
+message reference, and return `std::optional<std::string>`. A callback's failure
+is returned directly, without falling back to another handler.
+
+```cpp
+ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
+const std::filesystem::path configRoot("/opt/my-app/config");
+
+// Resolve config://controller.ini inside the application's config directory.
+options.uri_override["config://"] = [configRoot](
+    const std::string& uri,
+    const ResolveRoboticsURICpp::ResolveRoboticsURIOptions& opts,
+    std::string& error) {
+    const auto path = configRoot / uri.substr(std::string("config://").size());
+    auto nested = opts;
+    nested.uri_override.clear();
+    return ResolveRoboticsURICpp::resolveRoboticsURI(path.string(), nested, error);
+};
+auto absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI("config://controller.ini", options);
+```
+
+This adds `config://` while retaining `robot://`. The callback also receives
+`opts.defaultPackageName`, so custom overrides can use it for their own fallback logic.
+A runnable version is in [examples/custom_uri_override.cpp](examples/custom_uri_override.cpp).
+
+Assign a callback to `"model://"`, for example, to resolve models from an
+application-specific directory. Erase `"robot://"` to disable just the default
+handler, or clear the map to disable all overrides. A callback that delegates to
+the resolver should remove its own prefix or clear the map to avoid recursion.
 
 ## Command Line usage
 
@@ -136,21 +163,14 @@ You can also control search options from the command line:
 resolve-robotics-uri-cpp --exclude-active-prefix --exclude-env-var GAZEBO_MODEL_PATH package://iCub/robots/iCubGazeboV2_7/model.urdf
 ~~~
 
-Relative file paths now use robot-specific lookup by default:
+Use an explicit `robot://` URI for robot-specific lookup:
 
 ```bash
-resolve-robotics-uri-cpp config/controller.ini
-resolve-robotics-uri-cpp --package-name ControlLib config/controller.ini
+resolve-robotics-uri-cpp robot://config/controller.ini
+resolve-robotics-uri-cpp --default-package-name ControlLib robot://config/controller.ini
 ```
 
-The first command searches the working directory and robot overrides only. The
-second also searches the package default. Explicit `package://` inputs delegate
-to the original URI resolver; `file:` and `model:` URIs and absolute paths retain
-their existing behavior. To use the original resolver for every input:
-
-```bash
-resolve-robotics-uri-cpp --do-not-use-robot-specific-resolve config/controller.ini
-```
+The default package name is optional; without it, the package-default lookup is skipped.
 
 For example,  on bash this can be used to easily convert the a urdf specified via `package://` to an sdf (assuming you have Gazebo installed), using the [backtick operator](https://www.redhat.com/sysadmin/backtick-operator-vs-parens):
 ~~~

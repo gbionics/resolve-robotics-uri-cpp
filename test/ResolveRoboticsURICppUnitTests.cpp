@@ -64,19 +64,19 @@ private:
     std::string m_originalValue;
 };
 
-std::filesystem::path writeFile(const std::filesystem::path& filePath,
-                                const std::string& content = "test")
+std::filesystem::path
+writeFile(const std::filesystem::path& filePath, const std::string& content = "test")
 {
     std::filesystem::create_directories(filePath.parent_path());
     std::ofstream output(filePath);
     output << content;
-    return filePath;
+    return std::filesystem::path(filePath).make_preferred();
 }
 
 std::filesystem::path writeDirectory(const std::filesystem::path& directoryPath)
 {
     std::filesystem::create_directories(directoryPath);
-    return directoryPath;
+    return std::filesystem::path(directoryPath).make_preferred();
 }
 
 std::string fileUriFromPath(const std::filesystem::path& path)
@@ -125,10 +125,10 @@ TEST_CASE("ResolveFromCondaPrefixAndOptOut")
     ScopedEnvVar condaPrefix("CONDA_PREFIX");
     condaPrefix.unset();
 
-    const std::filesystem::path prefixPath =
-        std::filesystem::temp_directory_path() / "rru_cpp_conda_prefix_test";
-    const std::filesystem::path cubeUrdf =
-        writeFile(prefixPath / "share" / "example_cpp_package" / "cube.urdf", "<robot/>");
+    const std::filesystem::path prefixPath
+        = std::filesystem::temp_directory_path() / "rru_cpp_conda_prefix_test";
+    const std::filesystem::path cubeUrdf
+        = writeFile(prefixPath / "share" / "example_cpp_package" / "cube.urdf", "<robot/>");
 
     condaPrefix.set(prefixPath.string());
 
@@ -157,15 +157,15 @@ TEST_CASE("ResolveFromVirtualEnvPrefixFallback")
     ScopedEnvVar virtualEnv("VIRTUAL_ENV");
     virtualEnv.unset();
 
-    const std::filesystem::path prefixPath =
-        std::filesystem::temp_directory_path() / "rru_cpp_virtualenv_prefix_test";
-    const std::filesystem::path cubeUrdf =
-        writeFile(prefixPath / "share" / "example_cpp_package" / "cube.urdf", "<robot/>");
+    const std::filesystem::path prefixPath
+        = std::filesystem::temp_directory_path() / "rru_cpp_virtualenv_prefix_test";
+    const std::filesystem::path cubeUrdf
+        = writeFile(prefixPath / "share" / "example_cpp_package" / "cube.urdf", "<robot/>");
 
     virtualEnv.set(prefixPath.string());
 
-    auto resolved =
-        ResolveRoboticsURICpp::resolveRoboticsURI("package://example_cpp_package/cube.urdf");
+    auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI("package://example_cpp_package/"
+                                                              "cube.urdf");
     REQUIRE(resolved.has_value());
     CHECK(resolved.value() == cubeUrdf.string());
 
@@ -177,8 +177,8 @@ TEST_CASE("ExcludeEnvVar")
     ScopedEnvVar gazeboModelPath("GAZEBO_MODEL_PATH");
     gazeboModelPath.unset();
 
-    const std::filesystem::path modelDir =
-        std::filesystem::temp_directory_path() / "rru_cpp_gazebo_model_path_test";
+    const std::filesystem::path modelDir
+        = std::filesystem::temp_directory_path() / "rru_cpp_gazebo_model_path_test";
     const std::filesystem::path modelFile = writeFile(modelDir / "example_model");
 
     gazeboModelPath.set(modelDir.string());
@@ -189,25 +189,26 @@ TEST_CASE("ExcludeEnvVar")
 
     ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
     options.excludeEnvVars.insert("GAZEBO_MODEL_PATH");
-    CHECK_FALSE(ResolveRoboticsURICpp::resolveRoboticsURI("model://example_model", options)
-                    .has_value());
+    CHECK_FALSE(
+        ResolveRoboticsURICpp::resolveRoboticsURI("model://example_model", options).has_value());
 
     std::filesystem::remove_all(modelDir);
 }
 
 TEST_CASE("AdditionalPackageDirs")
 {
-    const std::filesystem::path additionalDir =
-        std::filesystem::temp_directory_path() / "rru_cpp_package_dirs_test";
-    const std::filesystem::path cubeUrdf =
-        writeFile(additionalDir / "example_cpp_package" / "cube.urdf", "<robot/>");
+    const std::filesystem::path additionalDir
+        = std::filesystem::temp_directory_path() / "rru_cpp_package_dirs_test";
+    const std::filesystem::path cubeUrdf
+        = writeFile(additionalDir / "example_cpp_package" / "cube.urdf", "<robot/>");
 
     ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
     options.excludeActivePrefix = true;
     options.packageDirs.push_back(additionalDir.string());
 
-    auto resolved =
-        ResolveRoboticsURICpp::resolveRoboticsURI("package://example_cpp_package/cube.urdf", options);
+    auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI("package://example_cpp_package/"
+                                                              "cube.urdf",
+                                                              options);
     REQUIRE(resolved.has_value());
     CHECK(resolved.value() == cubeUrdf.string());
 
@@ -216,43 +217,44 @@ TEST_CASE("AdditionalPackageDirs")
 
 TEST_CASE("ResolveExistingDirectoryPath")
 {
-    const std::filesystem::path directoryPath =
-        writeDirectory(std::filesystem::temp_directory_path() / "rru_cpp_existing_dir_test"
-                       / "nested_dir");
+    const std::filesystem::path directoryPath = writeDirectory(
+        std::filesystem::temp_directory_path() / "rru_cpp_existing_dir_test" / "nested_dir");
 
     auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI(directoryPath.string());
     REQUIRE(resolved.has_value());
     CHECK(resolved.value() == directoryPath.string());
 
-    std::filesystem::remove_all(std::filesystem::temp_directory_path() / "rru_cpp_existing_dir_test");
+    std::filesystem::remove_all(std::filesystem::temp_directory_path()
+                                / "rru_cpp_existing_dir_test");
 }
 
 TEST_CASE("ResolveExistingDirectoryFileUri")
 {
-    const std::filesystem::path directoryPath =
-        writeDirectory(std::filesystem::temp_directory_path() / "rru_cpp_file_uri_dir_test"
-                       / "nested_dir");
+    const std::filesystem::path directoryPath = writeDirectory(
+        std::filesystem::temp_directory_path() / "rru_cpp_file_uri_dir_test" / "nested_dir");
 
     auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI(fileUriFromPath(directoryPath));
     REQUIRE(resolved.has_value());
     CHECK(std::filesystem::equivalent(std::filesystem::path(resolved.value()), directoryPath));
 
-    std::filesystem::remove_all(std::filesystem::temp_directory_path() / "rru_cpp_file_uri_dir_test");
+    std::filesystem::remove_all(std::filesystem::temp_directory_path()
+                                / "rru_cpp_file_uri_dir_test");
 }
 
 TEST_CASE("ResolveDirectoryFromPackageUri")
 {
-    const std::filesystem::path additionalDir =
-        std::filesystem::temp_directory_path() / "rru_cpp_package_dir_uri_test";
-    const std::filesystem::path packageDirectory =
-        writeDirectory(additionalDir / "example_cpp_package" / "meshes");
+    const std::filesystem::path additionalDir
+        = std::filesystem::temp_directory_path() / "rru_cpp_package_dir_uri_test";
+    const std::filesystem::path packageDirectory
+        = writeDirectory(additionalDir / "example_cpp_package" / "meshes");
 
     ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
     options.excludeActivePrefix = true;
     options.packageDirs.push_back(additionalDir.string());
 
-    auto resolved =
-        ResolveRoboticsURICpp::resolveRoboticsURI("package://example_cpp_package/meshes", options);
+    auto resolved = ResolveRoboticsURICpp::resolveRoboticsURI("package://example_cpp_package/"
+                                                              "meshes",
+                                                              options);
     REQUIRE(resolved.has_value());
     CHECK(resolved.value() == packageDirectory.string());
 
@@ -271,7 +273,8 @@ TEST_CASE("RobotSpecificFile")
     ScopedEnvVar active("ACTIVE_ROBOT_NAME"), yarp("YARP_ROBOT_NAME");
     active.unset();
     yarp.unset();
-    const auto base = std::filesystem::temp_directory_path() / "rru_cpp_robot_specific_test";
+    const auto base = std::filesystem::canonical(std::filesystem::temp_directory_path())
+                      / "rru_cpp_robot_specific_test";
     struct Cleanup
     {
         std::filesystem::path base, cwd = std::filesystem::current_path();
@@ -293,8 +296,9 @@ TEST_CASE("RobotSpecificFile")
     ResolveRoboticsURIOptions options;
     options.excludeActivePrefix = true;
     options.packageDirs = {root.string()};
+    options.defaultPackageName = "ControlLib";
     const auto resolve
-        = [&] { return resolveRobotSpecificFile("config/controller.ini", "ControlLib", options); };
+        = [&] { return resolveRoboticsURI("robot://config/controller.ini", options); };
     CHECK(resolve() == fallback.string());
     yarp.set("YarpRobot");
     CHECK(resolve() == yarpFile.string());
@@ -350,27 +354,30 @@ TEST_CASE("RobotSpecificFile")
 
     // Explicit package URIs bypass both local files and robot overrides.
     std::string uriError;
-    CHECK(resolveRobotSpecificFile("package://ControlLib/config/controller.ini", "", options,
-                                   uriError) == fallback.string());
+    CHECK(resolveRoboticsURI("package://ControlLib/config/controller.ini", options, uriError)
+          == fallback.string());
     active.set("../invalid");
-    CHECK(resolveRobotSpecificFile("package://ControlLib/config/controller.ini", "other/package",
-                                   options, uriError) == fallback.string());
+    CHECK(resolveRoboticsURI("package://ControlLib/config/controller.ini", options, uriError)
+          == fallback.string());
     active.set("MyRobot");
-    CHECK_FALSE(resolveRobotSpecificFile("package://ControlLib/missing.ini", "", options,
-                                         uriError).has_value());
+    CHECK_FALSE(
+        resolveRoboticsURI("package://ControlLib/missing.ini", options, uriError).has_value());
     CHECK_FALSE(uriError.empty());
-    CHECK(resolveRobotSpecificFile("config/controller.ini", "", options) == first.string());
+    options.defaultPackageName.clear();
+    CHECK(resolveRoboticsURI("robot://config/controller.ini", options) == first.string());
+    options.defaultPackageName = "ControlLib";
 
     std::string error = "old error";
-    CHECK(resolveRobotSpecificFile("config/controller.ini", "ControlLib", options, error)
-          == first.string());
+    CHECK(resolveRoboticsURI("robot://config/controller.ini", options, error) == first.string());
     CHECK(error.empty());
     for (const auto& path : {"", "../outside", "/absolute", "file:/absolute"})
     {
-        CHECK_FALSE(resolveRobotSpecificFile(path, "ControlLib", options, error).has_value());
+        CHECK_FALSE(resolveRoboticsURI(std::string("robot://") + path, options, error).has_value());
         CHECK_FALSE(error.empty());
     }
-    CHECK_FALSE(resolveRobotSpecificFile("file", "a/b", options).has_value());
+    options.defaultPackageName = "a/b";
+    CHECK_FALSE(resolveRoboticsURI("robot://file", options).has_value());
+    options.defaultPackageName = "ControlLib";
     active.set("../outside");
     CHECK_FALSE(resolve().has_value());
     active.unset();
@@ -380,10 +387,69 @@ TEST_CASE("RobotSpecificFile")
     CHECK_FALSE(resolve().has_value());
     // No package means no default lookup, even directly under a search root.
     writeFile(root / "config/controller.ini");
-    CHECK_FALSE(resolveRobotSpecificFile("config/controller.ini", "", options).has_value());
+    options.defaultPackageName.clear();
+    CHECK_FALSE(resolveRoboticsURI("robot://config/controller.ini", options).has_value());
     // Exercise the default-options overloads as well.
     auto uniqueLocal = writeFile(cwd / "local.ini");
-    CHECK(resolveRobotSpecificFile("local.ini", "ControlLib") == uniqueLocal.string());
-    CHECK(resolveRobotSpecificFile("local.ini") == uniqueLocal.string());
-    CHECK(resolveRobotSpecificFile("local.ini", "ControlLib", error) == uniqueLocal.string());
+    CHECK(resolveRoboticsURI("robot://local.ini") == uniqueLocal.string());
+    CHECK(resolveRoboticsURI("robot://local.ini", error) == uniqueLocal.string());
+}
+
+TEST_CASE("URIOverrides")
+{
+    using namespace ResolveRoboticsURICpp;
+    ResolveRoboticsURIOptions options;
+    options.packageDirs = {"custom-root"};
+    options.excludeActivePrefix = true;
+    options.excludeEnvVars = {"AMENT_PREFIX_PATH"};
+    options.defaultPackageName = "ControlLib";
+    std::string received;
+    const URIResolver callback = [&](const std::string& uri,
+                                     const ResolveRoboticsURIOptions& forwarded,
+                                     std::string& error) -> std::optional<std::string> {
+        received = uri;
+        CHECK(forwarded.packageDirs == options.packageDirs);
+        CHECK(forwarded.excludeActivePrefix);
+        CHECK(forwarded.excludeEnvVars == options.excludeEnvVars);
+        CHECK(forwarded.defaultPackageName == "ControlLib");
+        CHECK(error.empty());
+        return "custom-result";
+    };
+    for (const auto& prefix : {"custom://", "robot://", "package://", "model://", "file://"})
+    {
+        options.uri_override[prefix] = callback;
+        std::string error = "stale error";
+        const std::string uri = std::string(prefix) + "file.ini";
+        CHECK(resolveRoboticsURI(uri, options, error) == "custom-result");
+        CHECK(received == uri);
+    }
+    options.uri_override["custom://nested/"]
+        = [](const std::string&,
+             const ResolveRoboticsURIOptions&,
+             std::string& error) -> std::optional<std::string> {
+        error = "custom failure";
+        return {};
+    };
+    std::string error;
+    CHECK_FALSE(resolveRoboticsURI("custom://nested/file.ini", options, error));
+    CHECK(error == "custom failure");
+    CHECK(resolveRoboticsURI("custom://file.ini", options) == "custom-result");
+    options.uri_override.clear();
+    CHECK_FALSE(resolveRoboticsURI("robot://file.ini", options));
+    options.uri_override[""] = callback;
+    CHECK_FALSE(resolveRoboticsURI("custom://file.ini", options, error));
+    CHECK_FALSE(error.empty());
+    options.uri_override = {{"custom://", {}}};
+    CHECK_FALSE(resolveRoboticsURI("custom://file.ini", options, error));
+    CHECK_FALSE(error.empty());
+
+    ResolveRoboticsURIOptions delegate;
+    delegate.uri_override["alias://"]
+        = [](const std::string&, const ResolveRoboticsURIOptions& opts, std::string& err) {
+              auto nested = opts;
+              nested.uri_override.clear();
+              return resolveRoboticsURI("package://missing/file.ini", nested, err);
+          };
+    CHECK_FALSE(resolveRoboticsURI("alias://file.ini", delegate, error));
+    CHECK_FALSE(error.empty());
 }
