@@ -125,22 +125,31 @@ is returned directly, without falling back to another handler.
 
 ```cpp
 ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
-const std::filesystem::path configRoot("/opt/my-app/config");
-
-// Resolve config://controller.ini inside the application's config directory.
-options.uriOverrides["config://"] = [configRoot](
+// Resolve home://Documents/notes.txt inside the current user's home directory.
+options.uriOverrides["home://"] = [](
     const std::string& uri,
     const ResolveRoboticsURICpp::ResolveRoboticsURIOptions& opts,
-    std::string& error) {
-    const auto path = configRoot / uri.substr(std::string("config://").size());
+    std::string& error) -> std::optional<std::string> {
+#ifdef _WIN32
+    const char* home = std::getenv("USERPROFILE");
+#else
+    const char* home = std::getenv("HOME");
+#endif
+    if (!home || !*home)
+    {
+        error = "User home directory is not set";
+        return {};
+    }
+    const auto path = std::filesystem::path(home) / uri.substr(std::string("home://").size());
     auto nested = opts;
     nested.uriOverrides.clear();
     return ResolveRoboticsURICpp::resolveRoboticsURI(path.string(), nested, error);
 };
-auto absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI("config://controller.ini", options);
+auto absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI("home://Documents/notes.txt", options);
 ```
 
-This adds `config://` while retaining `robot://`. The callback also receives
+This resolves `home://Documents/notes.txt` to `Documents/notes.txt` under the user’s
+home directory (`USERPROFILE` on Windows, `HOME` elsewhere), while retaining `robot://`. The callback also receives
 `opts.defaultPackageName`, so custom overrides can use it for their own fallback logic.
 A runnable version is in [examples/custom_uri_override.cpp](examples/custom_uri_override.cpp).
 

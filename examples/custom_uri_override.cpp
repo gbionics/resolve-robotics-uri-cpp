@@ -1,32 +1,42 @@
 // SPDX-License-Identifier: BSD-3-Clause
-// Usage: custom-uri-override CONFIG_ROOT config://controller.ini
+// Usage: custom-uri-override home://Documents/notes.txt
 
 #include <ResolveRoboticsURICpp.h>
+#include <cstdlib>
 #include <iostream>
 
 int main(int argc, char* argv[])
 {
-    if (argc != 3)
+    if (argc != 2)
     {
-        std::cerr << "Usage: custom-uri-override CONFIG_ROOT URI\n";
+        std::cerr << "Usage: custom-uri-override URI\n";
         return 1;
     }
 
-    const auto configRoot = std::filesystem::absolute(argv[1]);
     ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
-    // Resolve config:// URIs relative to an application-specific directory.
-    options.uriOverrides["config://"]
-        = [configRoot](const std::string& uri,
-                       const ResolveRoboticsURICpp::ResolveRoboticsURIOptions& opts,
-                       std::string& error) {
-              const auto path = configRoot / uri.substr(std::string("config://").size());
-              auto nested = opts;
-              nested.uriOverrides.clear();
-              return ResolveRoboticsURICpp::resolveRoboticsURI(path.string(), nested, error);
-          };
+    // Resolve home://Documents/notes.txt inside the current user's home directory.
+    options.uriOverrides["home://"]
+        = [](const std::string& uri,
+             const ResolveRoboticsURICpp::ResolveRoboticsURIOptions& opts,
+             std::string& error) -> std::optional<std::string> {
+#ifdef _WIN32
+        const char* home = std::getenv("USERPROFILE");
+#else
+        const char* home = std::getenv("HOME");
+#endif
+        if (!home || !*home)
+        {
+            error = "User home directory is not set";
+            return {};
+        }
+        const auto path = std::filesystem::path(home) / uri.substr(std::string("home://").size());
+        auto nested = opts;
+        nested.uriOverrides.clear();
+        return ResolveRoboticsURICpp::resolveRoboticsURI(path.string(), nested, error);
+    };
 
     std::string error;
-    const auto path = ResolveRoboticsURICpp::resolveRoboticsURI(argv[2], options, error);
+    const auto path = ResolveRoboticsURICpp::resolveRoboticsURI(argv[1], options, error);
     if (!path)
     {
         std::cerr << error << '\n';
