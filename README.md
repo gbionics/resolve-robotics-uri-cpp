@@ -117,7 +117,7 @@ Plain paths and `package://`, `model://`, and `file:` URIs keep their existing b
 
 ### Custom URI overrides
 
-`ResolveRoboticsURIOptions::uri_override` maps URI prefixes to callbacks and
+`ResolveRoboticsURIOptions::uriOverrides` maps URI prefixes to callbacks and
 contains a `robot://` handler by default. The longest matching prefix wins,
 before normal resolution. Callbacks receive the full URI, options, and error
 message reference, and return `std::optional<std::string>`. A callback's failure
@@ -128,13 +128,13 @@ ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
 const std::filesystem::path configRoot("/opt/my-app/config");
 
 // Resolve config://controller.ini inside the application's config directory.
-options.uri_override["config://"] = [configRoot](
+options.uriOverrides["config://"] = [configRoot](
     const std::string& uri,
     const ResolveRoboticsURICpp::ResolveRoboticsURIOptions& opts,
     std::string& error) {
     const auto path = configRoot / uri.substr(std::string("config://").size());
     auto nested = opts;
-    nested.uri_override.clear();
+    nested.uriOverrides.clear();
     return ResolveRoboticsURICpp::resolveRoboticsURI(path.string(), nested, error);
 };
 auto absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI("config://controller.ini", options);

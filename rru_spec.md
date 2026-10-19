@@ -84,7 +84,7 @@ prefixes; the longest matching prefix selects one callback. The callback receive
 the full input URI and search options. Its result or failure is final; no other
 handler or normal lookup is tried afterward. Empty prefixes are invalid.
 
-`ResolveRoboticsURIOptions::uri_override` is a map from prefix strings to
+`ResolveRoboticsURIOptions::uriOverrides` is a map from prefix strings to
 `URIResolver` callbacks, initialized with a `robot://` callback. Their signature is
 `std::optional<std::string>(const std::string& uri, const ResolveRoboticsURIOptions&,
 std::string& errorMessage)`. Empty callbacks are invalid. The error is cleared

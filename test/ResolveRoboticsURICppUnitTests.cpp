@@ -417,13 +417,13 @@ TEST_CASE("URIOverrides")
     };
     for (const auto& prefix : {"custom://", "robot://", "package://", "model://", "file://"})
     {
-        options.uri_override[prefix] = callback;
+        options.uriOverrides[prefix] = callback;
         std::string error = "stale error";
         const std::string uri = std::string(prefix) + "file.ini";
         CHECK(resolveRoboticsURI(uri, options, error) == "custom-result");
         CHECK(received == uri);
     }
-    options.uri_override["custom://nested/"]
+    options.uriOverrides["custom://nested/"]
         = [](const std::string&,
              const ResolveRoboticsURIOptions&,
              std::string& error) -> std::optional<std::string> {
@@ -434,20 +434,20 @@ TEST_CASE("URIOverrides")
     CHECK_FALSE(resolveRoboticsURI("custom://nested/file.ini", options, error));
     CHECK(error == "custom failure");
     CHECK(resolveRoboticsURI("custom://file.ini", options) == "custom-result");
-    options.uri_override.clear();
+    options.uriOverrides.clear();
     CHECK_FALSE(resolveRoboticsURI("robot://file.ini", options));
-    options.uri_override[""] = callback;
+    options.uriOverrides[""] = callback;
     CHECK_FALSE(resolveRoboticsURI("custom://file.ini", options, error));
     CHECK_FALSE(error.empty());
-    options.uri_override = {{"custom://", {}}};
+    options.uriOverrides = {{"custom://", {}}};
     CHECK_FALSE(resolveRoboticsURI("custom://file.ini", options, error));
     CHECK_FALSE(error.empty());
 
     ResolveRoboticsURIOptions delegate;
-    delegate.uri_override["alias://"]
+    delegate.uriOverrides["alias://"]
         = [](const std::string&, const ResolveRoboticsURIOptions& opts, std::string& err) {
               auto nested = opts;
-              nested.uri_override.clear();
+              nested.uriOverrides.clear();
               return resolveRoboticsURI("package://missing/file.ini", nested, err);
           };
     CHECK_FALSE(resolveRoboticsURI("alias://file.ini", delegate, error));

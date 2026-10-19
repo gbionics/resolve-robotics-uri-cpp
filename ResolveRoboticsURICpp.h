@@ -48,7 +48,7 @@ struct ResolveRoboticsURIOptions
 
     // Longest matching prefix wins; callbacks receive the full URI and options.
     // Clear this map to disable overrides. A selected callback owns failures too.
-    std::map<std::string, URIResolver> uri_override{{"robot://", detail::resolveRobotURI}};
+    std::map<std::string, URIResolver> uriOverrides{{"robot://", detail::resolveRobotURI}};
 };
 
 inline std::string cleanPathSeparator(const std::string& filename, const bool isWindows)
@@ -281,7 +281,7 @@ inline std::optional<std::string> resolveRoboticsURI(const std::string& uriFilen
     errorMessage.clear();
     const URIResolver* resolver = nullptr;
     std::size_t prefixLength = 0;
-    for (const auto& entry : options.uri_override)
+    for (const auto& entry : options.uriOverrides)
     {
         if (entry.first.empty() || !entry.second)
         {

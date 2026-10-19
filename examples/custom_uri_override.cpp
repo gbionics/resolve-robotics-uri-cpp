@@ -15,13 +15,13 @@ int main(int argc, char* argv[])
     const auto configRoot = std::filesystem::absolute(argv[1]);
     ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
     // Resolve config:// URIs relative to an application-specific directory.
-    options.uri_override["config://"]
+    options.uriOverrides["config://"]
         = [configRoot](const std::string& uri,
                        const ResolveRoboticsURICpp::ResolveRoboticsURIOptions& opts,
                        std::string& error) {
               const auto path = configRoot / uri.substr(std::string("config://").size());
               auto nested = opts;
-              nested.uri_override.clear();
+              nested.uriOverrides.clear();
               return ResolveRoboticsURICpp::resolveRoboticsURI(path.string(), nested, error);
           };
 
