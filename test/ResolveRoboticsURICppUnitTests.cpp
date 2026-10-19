@@ -392,6 +392,8 @@ TEST_CASE("RobotSpecificFile")
     // Exercise the default-options overloads as well.
     auto uniqueLocal = writeFile(cwd / "local.ini");
     CHECK(resolveRoboticsURI("robot://local.ini") == uniqueLocal.string());
+    CHECK(resolveRoboticsURI("robot:local.ini") == uniqueLocal.string());
+    CHECK(resolveRoboticsURI("ROBOT://local.ini") == uniqueLocal.string());
     CHECK(resolveRoboticsURI("robot://local.ini", error) == uniqueLocal.string());
 }
 
@@ -415,36 +417,43 @@ TEST_CASE("URIOverrides")
         CHECK(error.empty());
         return "custom-result";
     };
-    for (const auto& prefix : {"custom://", "robot://", "package://", "model://", "file://"})
+    for (const auto& scheme : {"custom", "robot", "package", "model", "file"})
     {
-        options.uriOverrides[prefix] = callback;
+        options.uriOverrides[scheme] = callback;
         std::string error = "stale error";
-        const std::string uri = std::string(prefix) + "file.ini";
+        const std::string uri = std::string(scheme) + "://file.ini";
         CHECK(resolveRoboticsURI(uri, options, error) == "custom-result");
         CHECK(received == uri);
     }
-    options.uriOverrides["custom://nested/"]
-        = [](const std::string&,
-             const ResolveRoboticsURIOptions&,
-             std::string& error) -> std::optional<std::string> {
+    options.uriOverrides["custom"] = [](const std::string&,
+                                        const ResolveRoboticsURIOptions&,
+                                        std::string& error) -> std::optional<std::string> {
         error = "custom failure";
         return {};
     };
     std::string error;
     CHECK_FALSE(resolveRoboticsURI("custom://nested/file.ini", options, error));
     CHECK(error == "custom failure");
-    CHECK(resolveRoboticsURI("custom://file.ini", options) == "custom-result");
+    CHECK_FALSE(resolveRoboticsURI("custom:resource", options, error));
+    CHECK(error == "custom failure");
+    options.uriOverrides["custom"] = callback;
+    CHECK(resolveRoboticsURI("custom://nested/file.ini", options) == "custom-result");
+    CHECK(resolveRoboticsURI("CUSTOM:resource", options) == "custom-result");
+    CHECK_FALSE(resolveRoboticsURI("customized://file.ini", options));
     options.uriOverrides.clear();
     CHECK_FALSE(resolveRoboticsURI("robot://file.ini", options));
-    options.uriOverrides[""] = callback;
-    CHECK_FALSE(resolveRoboticsURI("custom://file.ini", options, error));
-    CHECK_FALSE(error.empty());
-    options.uriOverrides = {{"custom://", {}}};
+    for (const auto& scheme : {"", "custom://", "custom://nested/", "custom:", "CUSTOM", "1custom"})
+    {
+        options.uriOverrides = {{scheme, callback}};
+        CHECK_FALSE(resolveRoboticsURI("custom://file.ini", options, error));
+        CHECK_FALSE(error.empty());
+    }
+    options.uriOverrides = {{"custom", {}}};
     CHECK_FALSE(resolveRoboticsURI("custom://file.ini", options, error));
     CHECK_FALSE(error.empty());
 
     ResolveRoboticsURIOptions delegate;
-    delegate.uriOverrides["alias://"]
+    delegate.uriOverrides["alias"]
         = [](const std::string&, const ResolveRoboticsURIOptions& opts, std::string& err) {
               auto nested = opts;
               nested.uriOverrides.clear();
@@ -452,4 +461,29 @@ TEST_CASE("URIOverrides")
           };
     CHECK_FALSE(resolveRoboticsURI("alias://file.ini", delegate, error));
     CHECK_FALSE(error.empty());
+}
+
+TEST_CASE("UnsupportedSchemesAndWindowsPaths")
+{
+    using namespace ResolveRoboticsURICpp;
+    ResolveRoboticsURIOptions options;
+    options.uriOverrides.clear();
+    for (const auto& uri : {"https:resource", "https://example.org/file", "robot:local.ini"})
+    {
+        std::string error;
+        CHECK_FALSE(resolveRoboticsURI(uri, options, error));
+        CHECK(error.find("Unsupported URI scheme") != std::string::npos);
+    }
+#ifdef _WIN32
+    const auto file = writeFile(std::filesystem::temp_directory_path() / "rru_drive_path.ini");
+    const std::string driveScheme(1, static_cast<char>(std::tolower(file.string()[0])));
+    options.uriOverrides[driveScheme] = [](const std::string&,
+                                           const ResolveRoboticsURIOptions&,
+                                           std::string&) -> std::optional<std::string> {
+        FAIL("A drive letter must not select a URI override");
+        return {};
+    };
+    CHECK(resolveRoboticsURI(file.string(), options) == file.string());
+    std::filesystem::remove(file);
+#endif
 }

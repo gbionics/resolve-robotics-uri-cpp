@@ -5,6 +5,7 @@
 #define RESOLVE_ROBOTICS_URI_CPP_H
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -46,9 +47,10 @@ struct ResolveRoboticsURIOptions
     // Optional default package for robot://, also available to other URI overrides.
     std::string defaultPackageName;
 
-    // Longest matching prefix wins; callbacks receive the full URI and options.
+    // Match lowercase scheme names exactly (without : or //).
+    // Callbacks receive the full URI and options.
     // Clear this map to disable overrides. A selected callback owns failures too.
-    std::map<std::string, URIResolver> uriOverrides{{"robot://", detail::resolveRobotURI}};
+    std::map<std::string, URIResolver> uriOverrides{{"robot", detail::resolveRobotURI}};
 };
 
 inline std::string cleanPathSeparator(const std::string& filename, const bool isWindows)
@@ -269,6 +271,27 @@ inline std::unordered_set<std::string> getSearchPaths(const ResolveRoboticsURIOp
     return pathList;
 }
 
+// Extract and normalize an RFC-style scheme. Windows drive paths are handled by the caller.
+inline std::string getURIScheme(const std::string& uri)
+{
+    const auto colon = uri.find(':');
+    if (colon == std::string::npos || colon == 0
+        || !std::isalpha(static_cast<unsigned char>(uri.front())))
+    {
+        return {};
+    }
+    std::string scheme = uri.substr(0, colon);
+    for (char& c : scheme)
+    {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '+' && c != '-' && c != '.')
+        {
+            return {};
+        }
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return scheme;
+}
+
 inline std::optional<std::string> resolveRoboticsURI(const std::string& uriFilename,
                                                      const ResolveRoboticsURIOptions& options,
                                                      std::string& errorMessage)
@@ -279,24 +302,26 @@ inline std::optional<std::string> resolveRoboticsURI(const std::string& uriFilen
 #endif
 
     errorMessage.clear();
-    const URIResolver* resolver = nullptr;
-    std::size_t prefixLength = 0;
+    const bool isWindowsDrivePath = uriFilename.size() >= 2 && uriFilename[1] == ':'
+                                    && std::isalpha(static_cast<unsigned char>(uriFilename[0]));
+    const std::string scheme = isWindowsDrivePath ? "" : getURIScheme(uriFilename);
     for (const auto& entry : options.uriOverrides)
     {
-        if (entry.first.empty() || !entry.second)
+        if (entry.first.empty() || getURIScheme(entry.first + ":") != entry.first || !entry.second)
         {
-            errorMessage = "URI overrides require nonempty prefixes and callbacks";
+            errorMessage = "URI overrides require lowercase scheme names and callbacks";
             return {};
         }
-        if (entry.first.size() > prefixLength && uriFilename.rfind(entry.first, 0) == 0)
-        {
-            resolver = &entry.second;
-            prefixLength = entry.first.size();
-        }
     }
-    if (resolver)
+    const auto resolver = options.uriOverrides.find(scheme);
+    if (!scheme.empty() && resolver != options.uriOverrides.end())
     {
-        return (*resolver)(uriFilename, options, errorMessage);
+        return resolver->second(uriFilename, options, errorMessage);
+    }
+    if (!scheme.empty() && scheme != "file" && scheme != "package" && scheme != "model")
+    {
+        errorMessage = "ResolveRoboticsURICpp: Unsupported URI scheme '" + scheme + "'";
+        return {};
     }
 
     // If path starts with file:, convert to local path and return if it exists.
@@ -449,7 +474,11 @@ inline std::optional<std::string> resolveRobotURI(const std::string& uri,
                                                   const ResolveRoboticsURIOptions& options,
                                                   std::string& errorMessage)
 {
-    const std::string relativePath = uri.substr(std::string("robot://").size());
+    std::string relativePath = uri.substr(uri.find(':') + 1);
+    if (relativePath.rfind("//", 0) == 0)
+    {
+        relativePath.erase(0, 2);
+    }
     const std::string& defaultPackageName = options.defaultPackageName;
     const std::filesystem::path path(relativePath);
     const auto validName = [](const std::string& name) {

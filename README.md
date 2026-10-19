@@ -117,16 +117,16 @@ Plain paths and `package://`, `model://`, and `file:` URIs keep their existing b
 
 ### Custom URI overrides
 
-`ResolveRoboticsURIOptions::uriOverrides` maps URI prefixes to callbacks and
-contains a `robot://` handler by default. The longest matching prefix wins,
-before normal resolution. Callbacks receive the full URI, options, and error
-message reference, and return `std::optional<std::string>`. A callback's failure
+`ResolveRoboticsURIOptions::uriOverrides` maps URI scheme names to callbacks and
+contains a `"robot"` handler by default. Keys omit `://`, e.g. `"home"`, and match
+the parsed scheme exactly before normal resolution. Callbacks receive the full
+URI, options, and error message reference, and return `std::optional<std::string>`. A callback's failure
 is returned directly, without falling back to another handler.
 
 ```cpp
 ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
 // Resolve home://Documents/notes.txt inside the current user's home directory.
-options.uriOverrides["home://"] = [](
+options.uriOverrides["home"] = [](
     const std::string& uri,
     const ResolveRoboticsURICpp::ResolveRoboticsURIOptions& opts,
     std::string& error) -> std::optional<std::string> {
@@ -140,7 +140,12 @@ options.uriOverrides["home://"] = [](
         error = "User home directory is not set";
         return {};
     }
-    const auto path = std::filesystem::path(home) / uri.substr(std::string("home://").size());
+    auto relative = uri.substr(uri.find(':') + 1);
+    if (relative.rfind("//", 0) == 0)
+    {
+        relative.erase(0, 2);
+    }
+    const auto path = std::filesystem::path(home) / relative;
     auto nested = opts;
     nested.uriOverrides.clear();
     return ResolveRoboticsURICpp::resolveRoboticsURI(path.string(), nested, error);
@@ -148,15 +153,16 @@ options.uriOverrides["home://"] = [](
 auto absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI("home://Documents/notes.txt", options);
 ```
 
-This resolves `home://Documents/notes.txt` to `Documents/notes.txt` under the user’s
-home directory (`USERPROFILE` on Windows, `HOME` elsewhere), while retaining `robot://`. The callback also receives
+This resolves `home://Documents/notes.txt` to `Documents/notes.txt` under the user's
+home directory (`USERPROFILE` on Windows, `HOME` elsewhere), while retaining
+`robot://`. The callback also receives
 `opts.defaultPackageName`, so custom overrides can use it for their own fallback logic.
 A runnable version is in [examples/custom_uri_override.cpp](examples/custom_uri_override.cpp).
 
-Assign a callback to `"model://"`, for example, to resolve models from an
-application-specific directory. Erase `"robot://"` to disable just the default
+Assign a callback to `"model"`, for example, to resolve models from an
+application-specific directory. Erase `"robot"` to disable just the default
 handler, or clear the map to disable all overrides. A callback that delegates to
-the resolver should remove its own prefix or clear the map to avoid recursion.
+the resolver should remove its own scheme or clear the map to avoid recursion.
 
 ## Command Line usage
 

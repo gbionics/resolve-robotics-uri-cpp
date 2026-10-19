@@ -1,6 +1,6 @@
-# `ResolveRoboticsURICpp::resolveRoboticsURI` File Search Rules
+# `ResolveRoboticsURICpp` File Search Rules
 
-`ResolveRoboticsURICpp::resolveRoboticsURI` resolves URIs by following the rules below.
+`ResolveRoboticsURICpp` resolves URIs by following the rules below.
 
 ## Supported URI Schemes
 
@@ -79,20 +79,23 @@ If no matching path is found, the resolver returns an empty `std::optional` and 
 
 # URI overrides
 
-Overrides are checked before normal URI/path processing. Keys are nonempty URI
-prefixes; the longest matching prefix selects one callback. The callback receives
-the full input URI and search options. Its result or failure is final; no other
-handler or normal lookup is tried afterward. Empty prefixes are invalid.
+Overrides are checked before normal URI/path processing. Keys are lowercase URI
+scheme names without ":" or "//", e.g. `"home"`. The parsed scheme is matched
+exactly, so `home://file` and `home:file` select the same handler; `homework://file`
+does not. Override selection is case-insensitive. Windows drive paths bypass overrides.
+The callback receives the full input URI and search options. Its result or failure
+is final; no other handler or normal lookup is tried afterward. Empty or invalid
+scheme names are rejected.
 
-`ResolveRoboticsURIOptions::uriOverrides` is a map from prefix strings to
+`ResolveRoboticsURIOptions::uriOverrides` is a map from scheme names to
 `URIResolver` callbacks, initialized with a `robot://` callback. Their signature is
 `std::optional<std::string>(const std::string& uri, const ResolveRoboticsURIOptions&,
 std::string& errorMessage)`. Empty callbacks are invalid. The error is cleared
 before dispatch; callbacks set it on failure. Clear the map to disable overrides,
-erase one prefix to remove a handler, or assign a callback to add/replace a handler.
+erase one scheme to remove a handler, or assign a callback to add/replace a handler.
 
-Callbacks can override built-in prefixes as well as new ones. When delegating to
-the resolver, remove the matching override (or disable overrides) to avoid recursion.
+Callbacks can override built-in schemes as well as custom schemes. When delegating to
+the resolver, remove the matching scheme override (or disable overrides) to avoid recursion.
 
 # Robot-specific files via `robot://`
 
