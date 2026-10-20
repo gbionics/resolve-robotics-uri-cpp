@@ -34,3 +34,11 @@ endfunction()
 rruc_add_unit_test(NAME ResolveRoboticsURICpp 
                    SOURCES ResolveRoboticsURICppUnitTests.cpp 
                    LINKS ResolveRoboticsURICpp::ResolveRoboticsURICpp)
+
+if(RRUC_BUILD_TOOL)
+    add_test(NAME RobotSpecificCLI
+             COMMAND ${CMAKE_COMMAND}
+                     -DTOOL=$<TARGET_FILE:resolve-robotics-uri-cpp>
+                     -DTEST_DIRECTORY=${CMAKE_CURRENT_BINARY_DIR}/cli
+                     -P ${CMAKE_CURRENT_SOURCE_DIR}/RobotSpecificCLI.cmake)
+endif()

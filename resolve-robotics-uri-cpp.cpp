@@ -14,7 +14,8 @@ int main(int argc, char* argv[])
     {
         std::cerr << "resolve-robotics-uri-cpp: Wrong number of parameters. Usage " << argv[0]
                   << " [--exclude-active-prefix] [--exclude-env-var NAME]"
-                     " [--package-dir PATH] URI"
+                     " [--package-dir PATH] [--default-package-name NAME]"
+                     " URI_OR_PATH"
                   << std::endl;
         return EXIT_FAILURE;
     }
@@ -25,6 +26,17 @@ int main(int argc, char* argv[])
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
+        if (arg == "--default-package-name")
+        {
+            if (i + 1 >= argc)
+            {
+                std::cerr << "resolve-robotics-uri-cpp: Missing argument for --default-package-name"
+                          << std::endl;
+                return EXIT_FAILURE;
+            }
+            options.defaultPackageName = argv[++i];
+            continue;
+        }
         if (arg == "--exclude-active-prefix")
         {
             options.excludeActivePrefix = true;
@@ -80,7 +92,7 @@ int main(int argc, char* argv[])
         std::cout << absolute_file_name.value();
     } else
     {
-        std::cerr << "resolve-robotics-uri-cpp: Impossible to find URI " << argv[1] << ", "
+        std::cerr << "resolve-robotics-uri-cpp: Impossible to find URI " << uri << ", "
                   << errorMessage << std::endl;
         return EXIT_FAILURE;
     }

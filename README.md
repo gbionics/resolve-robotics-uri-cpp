@@ -92,6 +92,78 @@ std::optional<std::string> absolute_path =
   ResolveRoboticsURICpp::resolveRoboticsURI("package://example_pkg/model.urdf", options);
 ~~~
 
+## Robot-specific configuration files
+
+Use `robot://` with the existing resolver:
+
+```cpp
+ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
+options.defaultPackageName = "ControlLib";
+auto absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI(
+    "robot://config/controller.ini", options);
+```
+
+For example, install the default at `share/ControlLib/config/controller.ini` and
+an override at `share/CompanyRobotConfigurations/robots/MyRobot/config/controller.ini`.
+Set `ACTIVE_ROBOT_NAME=MyRobot` (or `YARP_ROBOT_NAME` as a fallback). The lookup is:
+
+1. A regular file at `config/controller.ini` in the working directory.
+2. The robot-specific file under any immediate package's `robots/<robot>` directory.
+3. The default package file, if a default package name was supplied.
+
+Results are absolute paths to regular files. Discovery of `robots` directories is
+cached; see [the search specification](rru_spec.md) for refresh and error behavior.
+Plain paths and `package://`, `model://`, and `file:` URIs keep their existing behavior.
+
+### Custom URI overrides
+
+`ResolveRoboticsURIOptions::uriOverrides` maps URI scheme names to callbacks and
+contains a `"robot"` handler by default. Keys omit `://`, e.g. `"home"`, and match
+the parsed scheme exactly before normal resolution. Callbacks receive the full
+URI, options, and error message reference, and return `std::optional<std::string>`. A callback's failure
+is returned directly, without falling back to another handler.
+
+```cpp
+ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
+// Resolve home://Documents/notes.txt inside the current user's home directory.
+options.uriOverrides["home"] = [](
+    const std::string& uri,
+    const ResolveRoboticsURICpp::ResolveRoboticsURIOptions& opts,
+    std::string& error) -> std::optional<std::string> {
+#ifdef _WIN32
+    const char* home = std::getenv("USERPROFILE");
+#else
+    const char* home = std::getenv("HOME");
+#endif
+    if (!home || !*home)
+    {
+        error = "User home directory is not set";
+        return {};
+    }
+    auto relative = uri.substr(uri.find(':') + 1);
+    if (relative.rfind("//", 0) == 0)
+    {
+        relative.erase(0, 2);
+    }
+    const auto path = std::filesystem::path(home) / relative;
+    auto nested = opts;
+    nested.uriOverrides.clear();
+    return ResolveRoboticsURICpp::resolveRoboticsURI(path.string(), nested, error);
+};
+auto absolute_path = ResolveRoboticsURICpp::resolveRoboticsURI("home://Documents/notes.txt", options);
+```
+
+This resolves `home://Documents/notes.txt` to `Documents/notes.txt` under the user's
+home directory (`USERPROFILE` on Windows, `HOME` elsewhere), while retaining
+`robot://`. The callback also receives
+`opts.defaultPackageName`, so custom overrides can use it for their own fallback logic.
+A runnable version is in [examples/custom_uri_override.cpp](examples/custom_uri_override.cpp).
+
+Assign a callback to `"model"`, for example, to resolve models from an
+application-specific directory. Erase `"robot"` to disable just the default
+handler, or clear the map to disable all overrides. A callback that delegates to
+the resolver should remove its own scheme or clear the map to avoid recursion.
+
 ## Command Line usage
 
 `resolve-robotics-uri-cpp` also install a command line tool called `resolve-robotics-uri-cpp` for use in scripts, that can be used as:
@@ -105,6 +177,15 @@ You can also control search options from the command line:
 ~~~
 resolve-robotics-uri-cpp --exclude-active-prefix --exclude-env-var GAZEBO_MODEL_PATH package://iCub/robots/iCubGazeboV2_7/model.urdf
 ~~~
+
+Use an explicit `robot://` URI for robot-specific lookup:
+
+```bash
+resolve-robotics-uri-cpp robot://config/controller.ini
+resolve-robotics-uri-cpp --default-package-name ControlLib robot://config/controller.ini
+```
+
+The default package name is optional; without it, the package-default lookup is skipped.
 
 For example,  on bash this can be used to easily convert the a urdf specified via `package://` to an sdf (assuming you have Gazebo installed), using the [backtick operator](https://www.redhat.com/sysadmin/backtick-operator-vs-parens):
 ~~~
