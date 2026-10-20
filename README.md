@@ -30,7 +30,7 @@ include(FetchContent)
 FetchContent_Declare(
   ResolveRoboticsURICpp
   GIT_REPOSITORY https://github.com/gbionics/resolve-robotics-uri-cpp
-  GIT_TAG        v0.1.0 # Or change this to use another release or tag
+  GIT_TAG        v0.6.0 # Or change this to use another release or tag
 )
 FetchContent_MakeAvailable(ResolveRoboticsURICpp)
 
@@ -136,7 +136,7 @@ To simplify setting up the development environment of the project, this repo use
 In particular, to run the unit tests of the project you can just:
 
 ~~~bash
-git clone https://github.com/ami-iit/resolve-robotics-uri-cpp
+git clone https://github.com/gbionics/resolve-robotics-uri-cpp
 cd resolve-robotics-uri-cpp
 pixi run test
 ~~~
