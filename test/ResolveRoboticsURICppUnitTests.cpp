@@ -542,7 +542,7 @@ TEST_CASE("ScopedURISearchOrder")
 #ifdef _WIN32
     expectedRoots.insert(expectedRoots.begin() + 9, (base / "prefix/Library/share").string());
 #endif
-    const auto collected = getSearchPaths(options);
+    const auto collected = getOrderedSearchPaths(options);
     CHECK(std::vector<std::string>(collected.begin(), collected.end()) == expectedRoots);
     for (const auto& scheme : {"package://", "model://"})
     {
@@ -567,4 +567,60 @@ TEST_CASE("ScopedURISearchOrder")
         std::filesystem::remove(files[10]);
         options.packageDirs = {roots[9], roots[10], roots[9], roots[1]};
     }
+}
+
+TEST_CASE("DeprecatedSearchHelpersRemainCompatible")
+{
+    using namespace ResolveRoboticsURICpp;
+    // Explicit function pointer types verify the original public signatures.
+    std::unordered_map<std::string, bool> (*variablesFunction)() = &getSupportedEnvVars;
+    std::unordered_set<std::string> (*pathsFunction)(const ResolveRoboticsURIOptions&)
+        = &getSearchPaths;
+    bool (*fileFunction)(const std::string&,
+                         const std::string&,
+                         const std::unordered_set<std::string>&,
+                         const bool,
+                         std::string&)
+        = &getFilePath;
+
+    const auto orderedVariables = getOrderedSupportedEnvVars();
+    const std::unordered_map<std::string, bool> expectedVariables(orderedVariables.begin(),
+                                                                  orderedVariables.end());
+    CHECK(variablesFunction() == expectedVariables);
+    const auto base = std::filesystem::temp_directory_path() / "rru_cpp_compatibility_test";
+    struct Cleanup
+    {
+        std::filesystem::path base;
+        ~Cleanup()
+        {
+            std::filesystem::remove_all(base);
+        }
+    } cleanup{base};
+    const auto file = writeFile(base / "mypkg/model.urdf");
+    ResolveRoboticsURIOptions options;
+    options.excludeActivePrefix = true;
+    for (const auto& variable : orderedVariables)
+    {
+        options.excludeEnvVars.insert(variable.first);
+    }
+    options.packageDirs = {base.string(), base.string()};
+    const std::unordered_set<std::string> expectedPaths{base.string()};
+    CHECK(pathsFunction(options) == expectedPaths);
+#ifdef _WIN32
+    const bool isWindows = true;
+#else
+    const bool isWindows = false;
+#endif
+    std::string output;
+    CHECK(
+        fileFunction("package://mypkg/model.urdf", "package://", expectedPaths, isWindows, output));
+    CHECK(output == file.string());
+    // Brace-initialized roots also remain unambiguous for existing callers.
+    CHECK(getFilePath("model://mypkg/model.urdf", "model://", {base.string()}, isWindows, output));
+    CHECK(output == file.string());
+    CHECK_FALSE(
+        fileFunction("package://mypkg/missing", "package://", expectedPaths, isWindows, output));
+    CHECK(output == file.string());
+    CHECK_FALSE(
+        fileFunction("model://mypkg/model.urdf", "package://", expectedPaths, isWindows, output));
 }

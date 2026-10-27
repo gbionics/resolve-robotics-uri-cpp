@@ -131,3 +131,15 @@ The CLI passes its input to the URI resolver. Use `robot://config/controller.ini
 for robot lookup and `--default-package-name NAME` to add a default package. Plain paths
 and other URI schemes retain normal resolution. Search path and exclusion flags
 apply to robot lookup too.
+
+## Ordered search helpers and compatibility
+
+`getOrderedSupportedEnvVars()` and `getOrderedSearchPaths(options)` return ordered
+vectors. `getFilePathFromOrderedPaths(...)` searches a vector of roots in order.
+The resolver uses these helpers to preserve precedence.
+
+The original `getSupportedEnvVars()`, `getSearchPaths(options)`, and
+`getFilePath(..., const std::unordered_set<std::string>&, ...)` signatures remain
+available with `[[deprecated]]` attributes that point to the ordered replacements.
+The compatibility wrappers retain their unordered container types; callers should
+migrate to the ordered helpers when they need predictable search precedence.
