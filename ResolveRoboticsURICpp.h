@@ -17,6 +17,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace ResolveRoboticsURICpp
@@ -138,11 +139,11 @@ joinPaths(const std::string& base, const std::string& suffix, const bool isWindo
     return base + suffix;
 }
 
-inline bool getFilePath(const std::string& filename,
-                        const std::string& prefixToRemove,
-                        const std::unordered_set<std::string>& paths,
-                        const bool isWindows,
-                        std::string& outputFileName)
+inline bool getFilePathFromOrderedPaths(const std::string& filename,
+                                        const std::string& prefixToRemove,
+                                        const std::vector<std::string>& paths,
+                                        const bool isWindows,
+                                        std::string& outputFileName)
 {
     if (filename.substr(0, prefixToRemove.size()) != prefixToRemove)
     {
@@ -166,17 +167,40 @@ inline bool getFilePath(const std::string& filename,
     return false;
 }
 
-inline std::unordered_map<std::string, bool> getSupportedEnvVars()
+// Compatibility entry point for callers that supply unordered search roots.
+[[deprecated("Use getFilePathFromOrderedPaths with a vector to preserve search order")]] inline bool
+getFilePath(const std::string& filename,
+            const std::string& prefixToRemove,
+            const std::unordered_set<std::string>& paths,
+            const bool isWindows,
+            std::string& outputFileName)
+{
+    return getFilePathFromOrderedPaths(filename,
+                                       prefixToRemove,
+                                       std::vector<std::string>(paths.begin(), paths.end()),
+                                       isWindows,
+                                       outputFileName);
+}
+
+inline std::vector<std::pair<std::string, bool>> getOrderedSupportedEnvVars()
 {
     // true means the variable contains prefixes and we append /share,
     // false means we search the provided directories as-is.
-    return {{"ROS_PACKAGE_PATH", false},
+    return {{"AMENT_PREFIX_PATH", true},
             {"GAZEBO_MODEL_PATH", false},
-            {"SDF_PATH", false},
-            {"IGN_GAZEBO_RESOURCE_PATH", false},
             {"GZ_SIM_RESOURCE_PATH", false},
-            {"RRU_ADDITIONAL_PATHS", false},
-            {"AMENT_PREFIX_PATH", true}};
+            {"IGN_GAZEBO_RESOURCE_PATH", false},
+            {"ROS_PACKAGE_PATH", false},
+            {"SDF_PATH", false},
+            {"RRU_ADDITIONAL_PATHS", false}};
+}
+
+[[deprecated("Use getOrderedSupportedEnvVars to preserve environment-variable order")]] inline std::
+    unordered_map<std::string, bool>
+    getSupportedEnvVars()
+{
+    const auto variables = getOrderedSupportedEnvVars();
+    return {variables.begin(), variables.end()};
 }
 
 inline bool
@@ -202,17 +226,24 @@ inline std::optional<std::string> getActivePrefixPath()
     return {};
 }
 
-inline std::unordered_set<std::string> getSearchPaths(const ResolveRoboticsURIOptions& options)
+inline std::vector<std::string> getOrderedSearchPaths(const ResolveRoboticsURIOptions& options)
 {
     bool isWindows = false;
 #ifdef _WIN32
     isWindows = true;
 #endif
     // Collect package roots shared by URI and robot-specific resolution.
-    std::unordered_set<std::string> pathList;
+    std::vector<std::string> pathList;
+    std::unordered_set<std::string> seenPaths;
+    const auto appendPath = [&](const std::string& path) {
+        if (seenPaths.insert(path).second)
+        {
+            pathList.push_back(path);
+        }
+    };
 
     // Extract list of directories where to search for the file
-    const auto supportedEnvVars = getSupportedEnvVars();
+    const auto supportedEnvVars = getOrderedSupportedEnvVars();
     for (const auto& envSpec : supportedEnvVars)
     {
         const std::string& envVarName = envSpec.first;
@@ -240,10 +271,10 @@ inline std::unordered_set<std::string> getSearchPaths(const ResolveRoboticsURIOp
 
             if (isPrefixEnvVar)
             {
-                pathList.insert(individualPath + "/share");
+                appendPath(individualPath + "/share");
             } else
             {
-                pathList.insert(individualPath);
+                appendPath(individualPath);
             }
         }
     }
@@ -253,9 +284,9 @@ inline std::unordered_set<std::string> getSearchPaths(const ResolveRoboticsURIOp
         const std::optional<std::string> activePrefix = getActivePrefixPath();
         if (activePrefix.has_value())
         {
-            pathList.insert(activePrefix.value() + "/share");
+            appendPath(activePrefix.value() + "/share");
 #ifdef _WIN32
-            pathList.insert(activePrefix.value() + "/Library/share");
+            appendPath(activePrefix.value() + "/Library/share");
 #endif
         }
     }
@@ -264,11 +295,19 @@ inline std::unordered_set<std::string> getSearchPaths(const ResolveRoboticsURIOp
     {
         if (!packageDir.empty())
         {
-            pathList.insert(packageDir);
+            appendPath(packageDir);
         }
     }
 
     return pathList;
+}
+
+[[deprecated("Use getOrderedSearchPaths to preserve search precedence")]] inline std::unordered_set<
+    std::string>
+getSearchPaths(const ResolveRoboticsURIOptions& options)
+{
+    const auto paths = getOrderedSearchPaths(options);
+    return {paths.begin(), paths.end()};
 }
 
 // Extract and normalize an RFC-style scheme. Windows drive paths are handled by the caller.
@@ -369,10 +408,14 @@ inline std::optional<std::string> resolveRoboticsURI(const std::string& uriFilen
 
     // Actually solve it
 
-    const auto pathList = getSearchPaths(options);
+    const auto pathList = getOrderedSearchPaths(options);
 
     std::string realAbsoluteFileName;
-    bool ok = getFilePath(uriFilename, uriPrefix, pathList, isWindows, realAbsoluteFileName);
+    bool ok = getFilePathFromOrderedPaths(uriFilename,
+                                          uriPrefix,
+                                          pathList,
+                                          isWindows,
+                                          realAbsoluteFileName);
 
     if (ok)
     {
@@ -522,7 +565,7 @@ inline std::optional<std::string> resolveRobotURI(const std::string& uri,
         return {};
     }
     std::vector<std::filesystem::path> roots;
-    for (const auto& root : getSearchPaths(options))
+    for (const auto& root : getOrderedSearchPaths(options))
     {
         std::error_code ec;
         if (std::filesystem::is_directory(root, ec))

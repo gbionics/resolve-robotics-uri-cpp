@@ -19,7 +19,7 @@ The path can point to either a file or a directory, and it must exist.
 
 ## `package://` and `model://` Resolution
 
-For scoped URIs, the resolver strips the scheme and searches for the remaining relative path under a set of candidate directories.
+For scoped URIs, the resolver strips the scheme and searches for the remaining relative path under an ordered list of candidate directories.
 
 The search order is:
 
@@ -27,7 +27,7 @@ The search order is:
 2. Search paths derived from the active C++ environment prefix (`CONDA_PREFIX`, or fallback `VIRTUAL_ENV`), unless excluded.
 3. Any directories passed explicitly through `ResolveRoboticsURIOptions::packageDirs`.
 
-If multiple matching files are found, the first one encountered in the internal path set iteration is returned.
+If multiple matching files are found, the first one in the collected list is returned.
 
 ## Environment Variables Used For Search
 
@@ -40,6 +40,9 @@ The resolver reads these environment variables by default:
 - `ROS_PACKAGE_PATH`
 - `SDF_PATH`
 - `RRU_ADDITIONAL_PATHS`
+
+Variables are searched in the order listed above. Paths within each variable retain
+their listed order. Duplicate search paths keep their first occurrence.
 
 Each variable may contain multiple paths separated by the OS path separator (`:` on POSIX, `;` on Windows).
 
@@ -69,7 +72,7 @@ You can exclude specific environment variables from the default path extraction 
 
 ## Explicit Additional Directories
 
-`ResolveRoboticsURIOptions::packageDirs` adds extra directories to the search set.
+`ResolveRoboticsURIOptions::packageDirs` adds extra directories in their supplied order to the search list.
 
 These directories are searched in addition to default environment-based and active-prefix-based paths.
 
