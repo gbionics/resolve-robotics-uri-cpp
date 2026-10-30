@@ -209,18 +209,30 @@ isEnvVarExcluded(const std::string& envVarName, const ResolveRoboticsURIOptions&
     return options.excludeEnvVars.find(envVarName) != options.excludeEnvVars.end();
 }
 
-inline std::optional<std::string> getActivePrefixPath()
+inline std::vector<std::string> getActivePrefixPaths()
 {
-    const char* condaPrefix = std::getenv("CONDA_PREFIX");
-    if (condaPrefix && std::string(condaPrefix).size() > 0)
-    {
-        return std::string(condaPrefix);
-    }
-
+    std::vector<std::string> prefixes;
     const char* virtualEnv = std::getenv("VIRTUAL_ENV");
     if (virtualEnv && std::string(virtualEnv).size() > 0)
     {
-        return std::string(virtualEnv);
+        prefixes.emplace_back(virtualEnv);
+    }
+
+    const char* condaPrefix = std::getenv("CONDA_PREFIX");
+    if (condaPrefix && std::string(condaPrefix).size() > 0)
+    {
+        prefixes.emplace_back(condaPrefix);
+    }
+
+    return prefixes;
+}
+
+inline std::optional<std::string> getActivePrefixPath()
+{
+    const auto prefixes = getActivePrefixPaths();
+    if (!prefixes.empty())
+    {
+        return prefixes.front();
     }
 
     return {};
@@ -281,12 +293,11 @@ inline std::vector<std::string> getOrderedSearchPaths(const ResolveRoboticsURIOp
 
     if (!options.excludeActivePrefix)
     {
-        const std::optional<std::string> activePrefix = getActivePrefixPath();
-        if (activePrefix.has_value())
+        for (const std::string& activePrefix : getActivePrefixPaths())
         {
-            appendPath(activePrefix.value() + "/share");
+            appendPath(activePrefix + "/share");
 #ifdef _WIN32
-            appendPath(activePrefix.value() + "/Library/share");
+            appendPath(activePrefix + "/Library/share");
 #endif
         }
     }

@@ -144,7 +144,7 @@ TEST_CASE("ResolveFromCondaPrefixAndOptOut")
     std::filesystem::remove_all(prefixPath);
 }
 
-TEST_CASE("ResolveFromVirtualEnvPrefixFallback")
+TEST_CASE("ResolveFromVirtualEnvPrefix")
 {
     std::vector<std::unique_ptr<ScopedEnvVar>> scopedEnvVars;
     scopedEnvVars.reserve(supportedEnvVars().size());
@@ -168,6 +168,47 @@ TEST_CASE("ResolveFromVirtualEnvPrefixFallback")
                                                               "cube.urdf");
     REQUIRE(resolved.has_value());
     CHECK(resolved.value() == cubeUrdf.string());
+
+    std::filesystem::remove_all(prefixPath);
+}
+
+TEST_CASE("ResolveFromNestedVirtualEnvAndCondaPrefixes")
+{
+    std::vector<std::unique_ptr<ScopedEnvVar>> scopedEnvVars;
+    scopedEnvVars.reserve(supportedEnvVars().size());
+    for (const auto& envVar : supportedEnvVars())
+    {
+        scopedEnvVars.emplace_back(new ScopedEnvVar(envVar));
+        scopedEnvVars.back()->unset();
+    }
+
+    ScopedEnvVar condaPrefix("CONDA_PREFIX");
+    ScopedEnvVar virtualEnv("VIRTUAL_ENV");
+    const std::filesystem::path prefixPath
+        = std::filesystem::temp_directory_path() / "rru_cpp_nested_virtualenv_test";
+    const auto condaPath = prefixPath / "conda";
+    const auto virtualEnvPath = condaPath / "venv";
+    writeFile(condaPath / "share" / "example_cpp_package" / "cube.urdf", "<robot/>");
+    const auto virtualEnvUrdf
+        = writeFile(virtualEnvPath / "share" / "example_cpp_package" / "cube.urdf", "<robot/>");
+    const auto condaOnlyUrdf
+        = writeFile(condaPath / "share" / "example_cpp_package" / "conda_only.urdf", "<robot/>");
+    condaPrefix.set(condaPath.string());
+    virtualEnv.set(virtualEnvPath.string());
+
+    const std::string sharedUri = "package://example_cpp_package/cube.urdf";
+    const std::string condaOnlyUri = "package://example_cpp_package/conda_only.urdf";
+    const auto resolvedShared = ResolveRoboticsURICpp::resolveRoboticsURI(sharedUri);
+    REQUIRE(resolvedShared.has_value());
+    CHECK(resolvedShared.value() == virtualEnvUrdf.string());
+    const auto resolvedCondaOnly = ResolveRoboticsURICpp::resolveRoboticsURI(condaOnlyUri);
+    REQUIRE(resolvedCondaOnly.has_value());
+    CHECK(resolvedCondaOnly.value() == condaOnlyUrdf.string());
+
+    ResolveRoboticsURICpp::ResolveRoboticsURIOptions options;
+    options.excludeActivePrefix = true;
+    CHECK_FALSE(ResolveRoboticsURICpp::resolveRoboticsURI(sharedUri, options).has_value());
+    CHECK_FALSE(ResolveRoboticsURICpp::resolveRoboticsURI(condaOnlyUri, options).has_value());
 
     std::filesystem::remove_all(prefixPath);
 }

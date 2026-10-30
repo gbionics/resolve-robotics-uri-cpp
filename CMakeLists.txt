@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(ResolveRoboticsURICpp
         LANGUAGES CXX C
-        VERSION 0.6.1)
+        VERSION 0.6.2)
 
 include(GNUInstallDirs)
 

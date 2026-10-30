@@ -24,7 +24,7 @@ For scoped URIs, the resolver strips the scheme and searches for the remaining r
 The search order is:
 
 1. Search paths derived from supported environment variables.
-2. Search paths derived from the active C++ environment prefix (`CONDA_PREFIX`, or fallback `VIRTUAL_ENV`), unless excluded.
+2. Search paths derived from the active environment prefixes (`VIRTUAL_ENV`, then `CONDA_PREFIX`), unless excluded.
 3. Any directories passed explicitly through `ResolveRoboticsURIOptions::packageDirs`.
 
 If multiple matching files are found, the first one in the collected list is returned.
@@ -52,12 +52,15 @@ All other variables are searched as-is.
 
 ## Active Prefix Search Paths
 
-By default, the resolver considers the active environment prefix:
+By default, the resolver considers both nonempty active environment prefixes in this order:
 
+- `VIRTUAL_ENV`
 - `CONDA_PREFIX`
-- if `CONDA_PREFIX` is not defined: `VIRTUAL_ENV`
 
-For that prefix, it searches:
+When both are defined, resources in `VIRTUAL_ENV` take precedence over resources in
+`CONDA_PREFIX`, supporting virtual environments nested inside conda environments.
+
+For each prefix, it searches:
 
 - `<prefix>/share`
 - On Windows only: `<prefix>/Library/share`
