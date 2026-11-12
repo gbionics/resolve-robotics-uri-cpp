@@ -45,7 +45,8 @@ struct ResolveRoboticsURIOptions
     // Additional directories to search as-is.
     std::vector<std::string> packageDirs;
 
-    // Optional default package for robot://, also available to other URI overrides.
+    // Optional default package for robot://; its default_package query takes precedence.
+    // Also available to other URI overrides.
     std::string defaultPackageName;
 
     // Match lowercase scheme names exactly (without : or //).
@@ -524,6 +525,35 @@ inline void clearRobotSpecificFileCache()
 
 namespace detail
 {
+// Decode an application/x-www-form-urlencoded name or value. Invalid percent
+// escapes remain literal, and a percent-encoded '+' is not converted to a space.
+inline std::string decodeFormComponent(const std::string& input)
+{
+    const auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9')
+            return c - '0';
+        if (c >= 'a' && c <= 'f')
+            return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F')
+            return c - 'A' + 10;
+        return -1;
+    };
+    std::string output;
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        if (input[i] == '%' && i + 2 < input.size() && hex(input[i + 1]) >= 0
+            && hex(input[i + 2]) >= 0)
+        {
+            output += static_cast<char>(hex(input[i + 1]) * 16 + hex(input[i + 2]));
+            i += 2;
+        } else
+        {
+            output += input[i] == '+' ? ' ' : input[i];
+        }
+    }
+    return output;
+}
+
 inline std::optional<std::string> resolveRobotURI(const std::string& uri,
                                                   const ResolveRoboticsURIOptions& options,
                                                   std::string& errorMessage)
@@ -533,11 +563,33 @@ inline std::optional<std::string> resolveRobotURI(const std::string& uri,
     {
         relativePath.erase(0, 2);
     }
-    const std::string& defaultPackageName = options.defaultPackageName;
+    // The authority and path together identify the relative resource. Query and
+    // fragment components must never become part of the filesystem path.
+    relativePath = relativePath.substr(0, relativePath.find('#'));
+    std::string defaultPackageName = options.defaultPackageName;
+    const auto queryStart = relativePath.find('?');
+    if (queryStart != std::string::npos)
+    {
+        std::istringstream query(relativePath.substr(queryStart + 1));
+        relativePath.erase(queryStart);
+        std::string field;
+        while (std::getline(query, field, '&'))
+        {
+            const auto equals = field.find('=');
+            if (decodeFormComponent(field.substr(0, equals)) == "default_package")
+            {
+                defaultPackageName = equals == std::string::npos
+                                         ? ""
+                                         : decodeFormComponent(field.substr(equals + 1));
+                break;
+            }
+        }
+    }
     const std::filesystem::path path(relativePath);
     const auto validName = [](const std::string& name) {
         return !name.empty() && name != "." && name != ".."
-               && name.find_first_of("/\\:") == std::string::npos;
+               && name.find_first_of("/\\:") == std::string::npos
+               && name.find('\0') == std::string::npos;
     };
     if (relativePath.empty() || path.has_root_path()
         || relativePath.substr(0, relativePath.find_first_of("/\\")).find(':') != std::string::npos

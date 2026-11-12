@@ -341,12 +341,61 @@ TEST_CASE("RobotSpecificFile")
     const auto resolve
         = [&] { return resolveRoboticsURI("robot://config/controller.ini", options); };
     CHECK(resolve() == fallback.string());
+    // URI query values take precedence over options, with form decoding.
+    options.defaultPackageName = "ArgumentPackage";
+    for (const auto& query : {"default_package=ControlLib",
+                              "ignored=x&default_package=ControlLib&other=y",
+                              "default%5fpackage=%43ontrolLib",
+                              "default_package=ControlLib&default_package=Missing",
+                              "default_package=ControlLib#fragment?default_package=Missing"})
+    {
+        CHECK(resolveRoboticsURI(std::string("robot://config/controller.ini?") + query, options)
+              == fallback.string());
+    }
+    for (const auto& entry :
+         std::vector<std::pair<std::string, std::string>>{{"Control+Lib", "Control Lib"},
+                                                          {"Control%20Lib", "Control Lib"},
+                                                          {"Control%2bLib", "Control+Lib"},
+                                                          {"Control%26%3D%23Lib", "Control&=#Lib"},
+                                                          {"Control%25Lib", "Control%Lib"},
+                                                          {"Control%ZZLib", "Control%ZZLib"}})
+    {
+        const auto file = writeFile(root / entry.second / "config/controller.ini");
+        CHECK(resolveRoboticsURI("robot://config/controller.ini?default_package=" + entry.first,
+                                 options)
+              == file.string());
+    }
+    options.defaultPackageName = "ControlLib";
+    CHECK(resolveRoboticsURI("robot://config/controller.ini?unrelated=value", options)
+          == fallback.string());
+    CHECK(resolveRoboticsURI("robot://config/controller.ini?", options) == fallback.string());
+    CHECK(resolveRoboticsURI("robot://config/controller.ini#?default_package=Missing", options)
+          == fallback.string());
+    for (const auto& query :
+         {"default_package=", "default_package", "default_package=&default_package=ControlLib"})
+    {
+        CHECK_FALSE(
+            resolveRoboticsURI(std::string("robot://config/controller.ini?") + query, options));
+    }
     yarp.set("YarpRobot");
     CHECK(resolve() == yarpFile.string());
     active.set("MyRobot");
     CHECK(resolve() == overrideFile.string());
+    CHECK(resolveRoboticsURI("robot://config/controller.ini?default_package=ControlLib", options)
+          == overrideFile.string());
     auto local = writeFile(cwd / "config/controller.ini");
     CHECK(resolve() == local.string());
+    CHECK(resolveRoboticsURI("robot://config/controller.ini?default_package=ControlLib", options)
+          == local.string());
+    for (const auto& package : {"..", "%2e%2e", "a%2Fb", "a%5Cb", "a%3Ab", "a%00b"})
+    {
+        std::string error;
+        CHECK_FALSE(resolveRoboticsURI(std::string("robot://config/controller.ini?default_package=")
+                                           + package,
+                                       options,
+                                       error));
+        CHECK_FALSE(error.empty());
+    }
     std::filesystem::remove(local);
     writeDirectory(local);
     CHECK(resolve() == overrideFile.string());
